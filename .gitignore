@@ -1,0 +1,51 @@
+# ── Secrets (ne jamais versionner) ──────────────────────────────────────────
+.streamlit/secrets.toml
+.env
+*.key
+
+# ── Données lourdes exclues du dépôt (reproduire via scripts/prepare_*.py) ──
+# GPKG réseau originaux (remplacés par les .parquet optimisés)
+data/reseau_serm/*.gpkg
+
+# Cache data.gouv (retéléchargé à la demande par datagouv_context.py)
+data/cache/
+data/rp2022_modes_dt.csv
+data/critair_epci.csv
+data/gares_sncf.geojson
+data/vp_elec_epci.csv
+data/freq_gares.csv
+
+# Sauvegardes du script d'optimisation
+data/.backup_avant_optim/
+
+# Livrables regénérables (scripts/export_livrables_par_serm.py)
+EXPORT_LIVRABLES/
+
+# ── Python ───────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# ── Environnements virtuels ──────────────────────────────────────────────────
+.venv/
+venv/
+env/
+ENV/
+
+# ── Outils ───────────────────────────────────────────────────────────────────
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# ── Système ──────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini

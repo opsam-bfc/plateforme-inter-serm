@@ -1,0 +1,102 @@
+/* ===== Plateforme inter-SERM - theme cale sur MACROZONE ===== */
+
+/* Sidebar */
+section[data-testid="stSidebar"] {
+    background-color: #142850;
+}
+section[data-testid="stSidebar"] h1,
+section[data-testid="stSidebar"] p,
+section[data-testid="stSidebar"] span,
+section[data-testid="stSidebar"] label {
+    color: #E0E0E0 !important;
+}
+section[data-testid="stSidebar"] .stRadio label span {
+    font-size: 0.95rem !important;
+}
+
+/* Metric cards */
+[data-testid="stMetric"] {
+    background: white;
+    border: 1px solid #E0E4EA;
+    border-radius: 10px;
+    padding: 14px 18px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+}
+[data-testid="stMetric"] label {
+    color: #5A6A7A !important;
+    font-size: 0.78rem !important;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+[data-testid="stMetric"] [data-testid="stMetricValue"] {
+    font-size: 1.55rem !important;
+    font-weight: 700 !important;
+    color: #142850 !important;
+}
+
+/* Section headers */
+h2 {
+    color: #142850 !important;
+    border-bottom: 3px solid #1565C0;
+    padding-bottom: 8px;
+    margin-bottom: 20px !important;
+}
+h3 {
+    color: #37474F !important;
+    font-size: 1.1rem !important;
+    margin-top: 24px !important;
+}
+
+/* Dataframe */
+[data-testid="stDataFrame"] {
+    border: 1px solid #E0E4EA;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+/* Selectbox */
+.stSelectbox label {
+    font-weight: 600 !important;
+    color: #37474F !important;
+}
+
+/* Buttons */
+.stButton > button {
+    border-radius: 6px;
+    font-weight: 600;
+    border: 1px solid #1565C0;
+    color: #1565C0;
+    transition: all 0.2s;
+}
+.stButton > button:hover {
+    background-color: #1565C0;
+    color: white;
+}
+
+/* Dividers */
+hr {
+    border-color: #E0E4EA !important;
+    margin: 1.5rem 0 !important;
+}
+
+/* Tabs */
+.stTabs [data-baseweb="tab-list"] {
+    gap: 0;
+}
+.stTabs [data-baseweb="tab"] {
+    padding: 8px 20px;
+    font-weight: 600;
+}
+
+/* Badge SERM (couleurs distinctes) */
+.serm-badge {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 999px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    color: white;
+}
+.serm-dijon  { background-color: #C62828; }
+.serm-nfc    { background-color: #2E7D32; }
+.serm-besan  { background-color: #1565C0; }

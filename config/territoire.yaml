@@ -1,0 +1,107 @@
+# =============================================================================
+# Configuration du territoire — Plateforme d'analyse inter-SERM
+# =============================================================================
+#
+# Ce fichier est la SOURCE DE VÉRITÉ unique pour adapter la plateforme
+# à n'importe quel territoire.
+#
+# Pour dupliquer la plateforme sur un autre projet :
+#   1. Copier ce fichier et l'adapter (noms, couleurs, codes, départements…).
+#   2. Préparer les données au format attendu (scripts/prepare_*.py).
+#   3. Mettre à jour les chemins source (section [chemins]).
+#   4. Lancer scripts/optimize_for_deployment.py.
+#   5. Pousser sur GitHub → Streamlit Cloud.
+# =============================================================================
+
+# ── Identité de la plateforme ─────────────────────────────────────────────────
+plateforme:
+  nom: "Plateforme inter-SERM"
+  description: "Analyse OPSAM Ref2024 — DREAL Bourgogne-Franche-Comté"
+  institution: "DREAL Bourgogne-Franche-Comté"
+  scenario_opsam: "Ref2024"
+
+# ── Région / territoire global ────────────────────────────────────────────────
+region:
+  nom: "Bourgogne-Franche-Comté"
+  nom_court: "BFC"
+  # Codes INSEE des départements (utilisés pour filtrer les données data.gouv)
+  departements: ["21", "25", "39", "58", "70", "71", "89", "90"]
+  # Centre par défaut pour les cartes Plotly (calculé automatiquement si absent)
+  carte_centre_lat: 47.2
+  carte_centre_lon: 5.0
+  carte_zoom: 6.2
+
+# ── Zones d'analyse (SERM ou équivalent) ─────────────────────────────────────
+#
+# Chaque zone est un territoire d'étude avec :
+#   code     : entier unique utilisé comme clé dans les données (code_serm)
+#   nom      : nom complet affiché dans l'UI
+#   nom_court: libellé court pour les graphiques
+#   slug     : identifiant fichier (reseau_serm/{slug}.gpkg, limites_communes_serm{code}.geojson)
+#   couleur  : couleur hexadécimale pour les graphiques et la carte
+#   macrozone: lien vers les champs M1/M2 du modèle OPSAM
+#              source : "M1" ou "M2" (selon quelle sortie OPSAM contient ce SERM)
+#              code   : valeur du champ M1 ou M2 pour sélectionner les zones OPSAM
+#
+zones:
+  - code: 1
+    nom: "SERM Dijonnais"
+    nom_court: "Dijon"
+    slug: "dijon"
+    couleur: "#C62828"
+    macrozone:
+      source: "M1"
+      code: 1
+
+  - code: 2
+    nom: "SERM Nord Franche-Comté"
+    nom_court: "NFC"
+    slug: "nfc"
+    couleur: "#2E7D32"
+    macrozone:
+      source: "M1"
+      code: 2
+
+  - code: 3
+    nom: "SERM Bisontain"
+    nom_court: "Besançon"
+    slug: "besancon"
+    couleur: "#1565C0"
+    macrozone:
+      source: "M2"
+      code: 3
+
+# ── Zone résiduelle (hors territoires d'étude) ───────────────────────────────
+#
+# Représente l'espace régional non couvert par les zones ci-dessus.
+# Mettre a null pour désactiver.
+#
+zone_hors_serm:
+  code: 0
+  nom: "Reste BFC (hors SERM)"
+  nom_court: "Reste BFC"
+  slug: "reste_bfc"
+  couleur: "#90A4AE"
+  macrozone:
+    source: "M1"
+    code: 0
+
+# ── Chemins sources (modifiables via variables d'environnement aussi) ─────────
+#
+# Les mêmes noms de variables d'environnement SERM_* peuvent remplacer ces
+# valeurs : SERM_OPSAM_DIR, SERM_OPSAM_BASE_DIR, SERM_LOOKUP_CSV,
+# SERM_ZONAGE_SHP, SERM_EPCI_SHP, SERM_MATRICE_VL_CSV.
+#
+chemins:
+  # Dossier Outputs du modèle OPSAM (fichiers synthese_m{N}_{scenario}.csv)
+  opsam_outputs: '\\poste-2-170\OPSAM_v3\OPSAM\Outputs\Ref2024'
+  # Dossier Base du modèle OPSAM (reseau_detaille_linkshape_{scenario}.shp)
+  opsam_base: '\\poste-2-170\OPSAM_v3\OPSAM\Base\Ref2024'
+  # Fichier lookup commune / EPCI / macrozone
+  lookup_csv: '\\nas-bfc\COMMUN\21_MOBILITE\21.2_COMMUN\DATA\lookup_dep_com_epci_macrozone.csv'
+  # Shapefile des zones OPSAM (polygones)
+  zonage_shp: '\\nas-bfc\COMMUN\21_MOBILITE\21.2_COMMUN\DATA\zonage_OPSAM_poly.shp'
+  # Shapefile des EPCI (référentiel national)
+  epci_shp: '\\nas-bfc\COMMUN\21_MOBILITE\21.2_COMMUN\DATA\EPCI\EPCI_2025.shp'
+  # Fichier de la matrice VL OPSAM
+  matrice_vl_csv: 'matrice_vl_Ref2024.csv'

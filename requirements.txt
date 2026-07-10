@@ -1,0 +1,17 @@
+streamlit>=1.48.0
+pandas>=2.0
+geopandas>=1.0
+# pyyaml : lecture du fichier de configuration du territoire (config/territoire.yaml)
+pyyaml>=6.0
+shapely>=2.0
+plotly>=6.0
+reportlab>=4.0
+# Kaleido 0.2.x embarque le moteur Chrome -> indispensable pour fig.to_image()
+# (export PDF des graphiques Plotly sans Chrome, compatible Streamlit Cloud).
+kaleido>=0.2.1,<1.0.0
+pypdf>=4.0
+openpyxl>=3.1
+Pillow>=10.0
+# pyarrow : lecture Parquet (données tabulaires + GeoParquet réseau optimisé)
+pyarrow>=15.0
+requests>=2.31

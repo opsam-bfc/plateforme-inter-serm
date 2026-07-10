@@ -1,0 +1,107 @@
+"""rebuild_for_new_perimeter.py.
+
+Orchestre la regeneration complete du bundle ``data/`` apres une
+evolution des perimetres SERM (par exemple modification du lookup
+``lookup_dep_com_epci_macrozone.csv``).
+
+Etapes enchainees :
+
+1. ``prepare_synthese_serm`` (synthese OPSAM m1 + m2, deduction VL) ;
+2. ``prepare_perimetres_serm`` (dissolution polygones par SERM) ;
+3. ``prepare_reseau_serm`` (intersection reseau routier / SERM) ;
+4. ``prepare_od_vl`` (agregation matrice OD VL).
+
+Chaque etape lit ses propres variables d'environnement (``SERM_*``).
+Le script s'arrete sur la premiere etape en echec et affiche un compte
+rendu.
+"""
+
+from __future__ import annotations
+
+import argparse
+import logging
+import sys
+import time
+from pathlib import Path
+from typing import Callable
+
+ICI = Path(__file__).resolve().parent
+sys.path.insert(0, str(ICI))
+
+# Imports tardifs pour respecter sys.path ci-dessus.
+from prepare_synthese_serm import main as etape_synthese  # noqa: E402
+from prepare_perimetres_serm import main as etape_perimetres  # noqa: E402
+from prepare_reseau_serm import main as etape_reseau  # noqa: E402
+from prepare_od_vl import main as etape_od  # noqa: E402
+from prepare_limites import main as etape_limites  # noqa: E402
+from export_livrables_par_serm import main as etape_export  # noqa: E402
+
+LOG = logging.getLogger("rebuild_for_new_perimeter")
+
+
+ETAPES: list[tuple[str, Callable]] = [
+    ("Synthese SERM (VL = Total - PL)", etape_synthese),
+    ("Perimetres SERM (geojson)", etape_perimetres),
+    ("Reseau routier par SERM (GPKG)", etape_reseau),
+    ("Matrice OD VL (top flux, inter-SERM, EPCI)", etape_od),
+    ("Limites communes et EPCI (geojson)", etape_limites),
+]
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--ignorer", nargs="*", default=[],
+        help="Etapes a ignorer (ex. : synthese, perimetres, reseau, od).",
+    )
+    parser.add_argument(
+        "--export", action="store_true",
+        help="Apres le rebuild, lance export_livrables_par_serm.py.",
+    )
+    parser.add_argument("-v", "--verbose", action="store_true")
+    args = parser.parse_args(argv)
+
+    logging.basicConfig(
+        level=logging.DEBUG if args.verbose else logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s | %(message)s",
+    )
+
+    mapping_short = {
+        "synthese": etape_synthese,
+        "perimetres": etape_perimetres,
+        "reseau": etape_reseau,
+        "od": etape_od,
+        "limites": etape_limites,
+    }
+    ignorer = {mapping_short[k] for k in args.ignorer if k in mapping_short}
+
+    debut = time.time()
+    for libelle, etape in ETAPES:
+        if etape in ignorer:
+            LOG.info("[SKIP] %s", libelle)
+            continue
+        LOG.info("[START] %s", libelle)
+        t0 = time.time()
+        code = etape(["-v"] if args.verbose else [])
+        if code != 0:
+            LOG.error("[FAIL ] %s (code %d)", libelle, code)
+            return code
+        LOG.info(
+            "[OK   ] %s en %.1f s", libelle, time.time() - t0
+        )
+
+    LOG.info("Bundle regenere en %.1f s.", time.time() - debut)
+
+    if args.export:
+        LOG.info("[START] Export livrables par SERM")
+        code_exp = etape_export(["-v", "--effacer"])
+        if code_exp != 0:
+            LOG.error("[FAIL ] Export livrables (code %d)", code_exp)
+            return code_exp
+        LOG.info("[OK   ] Export livrables")
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
