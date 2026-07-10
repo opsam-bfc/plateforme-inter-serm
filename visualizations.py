@@ -552,40 +552,60 @@ def _ajouter_polygones_gdf(
     showlegend: bool = False,
     name: str = "",
 ) -> None:
-    """Ajoute les polygones d'un GeoDataFrame en tant que traces Scattermapbox.
+    """Ajoute les polygones d'un GeoDataFrame en UNE SEULE trace Scattermapbox.
 
-    Chaque polygone est dessiné en mode ``lines`` (contour) avec un remplissage
-    semi-transparent.  Si ``hover_col`` est fourni, affiche ce champ au survol.
+    Toutes les geometries sont concatenees avec des separateurs ``None``
+    (meme technique que _coords_lignes pour le reseau routier).
+    Cela reduit N traces (ex. 754 communes) a 1 trace, divisant par N
+    le temps de serialisation JSON et de rendu navigateur.
+    Le hover par polygone est conserve via une liste repetee par point.
     """
+    lats_all: list = []
+    lons_all: list = []
+    hover_all: list = []
+
     for _, row in gdf.iterrows():
         geom = row.geometry
-        hover_text = str(row[hover_col]) if hover_col and hover_col in row.index else None
+        hover_text = str(row[hover_col]) if hover_col and hover_col in row.index else ""
         geoms = (
             list(geom.geoms) if geom.geom_type == "MultiPolygon" else [geom]
         )
         for poly in geoms:
-            # Extérieur
             xs, ys = poly.exterior.coords.xy
-            lats = list(ys) + [None]
-            lons = list(xs) + [None]
-            # Ajouter les trous
+            pts = list(ys)
+            lats_all.extend(pts)
+            lons_all.extend(list(xs))
+            hover_all.extend([hover_text] * len(pts))
+            lats_all.append(None)
+            lons_all.append(None)
+            hover_all.append(None)
             for interior in poly.interiors:
                 xi, yi = interior.coords.xy
-                lats += list(yi) + [None]
-                lons += list(xi) + [None]
-            fig.add_trace(
-                go.Scattermapbox(
-                    lat=lats, lon=lons,
-                    mode="lines",
-                    line=dict(width=largeur_ligne, color=couleur_ligne),
-                    fill="toself",
-                    fillcolor=couleur_remplissage,
-                    hovertext=hover_text,
-                    hoverinfo="text" if hover_text else "skip",
-                    showlegend=showlegend,
-                    name=name,
-                )
-            )
+                pts_i = list(yi)
+                lats_all.extend(pts_i)
+                lons_all.extend(list(xi))
+                hover_all.extend([hover_text] * len(pts_i))
+                lats_all.append(None)
+                lons_all.append(None)
+                hover_all.append(None)
+
+    if not lats_all:
+        return
+
+    fig.add_trace(
+        go.Scattermapbox(
+            lat=lats_all,
+            lon=lons_all,
+            mode="lines",
+            line=dict(width=largeur_ligne, color=couleur_ligne),
+            fill="toself",
+            fillcolor=couleur_remplissage,
+            hovertext=hover_all,
+            hoverinfo="text" if hover_col else "skip",
+            showlegend=showlegend,
+            name=name,
+        )
+    )
 
 
 def _labels_centroides(

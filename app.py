@@ -198,6 +198,35 @@ def _centroides(signature: float):
     return charger_centroides_zones()
 
 
+@st.cache_data(
+    show_spinner="Generation de la carte des flux...",
+    max_entries=18,  # 3 SERM x 3 typologies x 2 nb_max_buckets
+)
+def _lignes_de_desir(
+    code_serm: int,
+    typologie: str,
+    nb_max: int,
+    seuil_pct: float,
+    style_mapbox: str,
+    signature: float,
+):
+    """Cache la figure lignes de desir (754 polygones communes = couteux)."""
+    del signature
+    communes_gdf = charger_communes_serm(code_serm)
+    epci_gdf = charger_limites_epci()
+    perimetres = charger_perimetres_serm()
+    try:
+        top_od = charger_top_od_communes()
+    except FileNotFoundError:
+        top_od = charger_top_od_vl()
+    return lignes_de_desir(
+        top_od, perimetres, style_mapbox,
+        code_serm=code_serm, typologie=typologie,
+        nb_max=nb_max, seuil_pct_max=float(seuil_pct),
+        communes_gdf=communes_gdf, epci_gdf=epci_gdf,
+    )
+
+
 @st.cache_data(show_spinner="Chargement des limites communales...")
 def _communes_serm(code_serm: int, signature: float):
     del signature
@@ -542,36 +571,14 @@ elif page == "Corridors & top flux OD":
             help="Supprimer les flux < N % du flux maximum affiche.",
         )
 
-    communes_gdf = _communes_serm(code, signature)
-    epci_gdf = _limites_epci(signature)
-
-    try:
-        top_od_com = _top_od_communes(signature)
-        fig_lignes = lignes_de_desir(
-            top_od_com, perimetres_gdf, _style_mapbox(),
-            code_serm=code, typologie=typo,
-            nb_max=nb_max, seuil_pct_max=float(seuil_pct),
-            communes_gdf=communes_gdf,
-            epci_gdf=epci_gdf,
-        )
-    except FileNotFoundError:
-        st.warning(
-            "Fichier `top_od_com_serm.parquet` absent — "
-            "lancer `scripts/prepare_od_vl.py` pour le generer. "
-            "Affichage en granularite zone OPSAM."
-        )
-        top_od_com = _top_od(signature)
-        fig_lignes = lignes_de_desir(
-            top_od_com, perimetres_gdf, _style_mapbox(),
-            code_serm=code, typologie=typo,
-            nb_max=nb_max, seuil_pct_max=float(seuil_pct),
-            communes_gdf=communes_gdf,
-            epci_gdf=epci_gdf,
-        )
+    fig_lignes = _lignes_de_desir(
+        code, typo, nb_max, float(seuil_pct), _style_mapbox(), signature
+    )
 
     st.plotly_chart(fig_lignes, use_container_width=True)
 
     st.subheader(f"Top {nb_max} flux — {info_serm(code)['nom']} ({typo})")
+    top_od_com = _top_od_communes(signature)
     try:
         sous = top_od_com[
             (top_od_com["serm"] == code) & (top_od_com["typologie"] == typo)
