@@ -145,6 +145,36 @@ def _reseau(slug: str, signature: float):
     return charger_reseau_serm(slug)
 
 
+@st.cache_data(show_spinner="Generation de la carte reseau...", max_entries=12)
+def _carte_trafic(
+    code_serm: int,
+    metrique: str,
+    style_mapbox: str,
+    signature: float,
+    avec_departementales: bool = False,
+):
+    """Cache la figure Plotly de la carte trafic (couteuse a generer).
+
+    Le cache est invalide quand signature, metrique ou le filtre voies change.
+    max_entries=12 : 3 SERM x 2 metriques x 2 filtres.
+    """
+    del signature
+    inf = SERM_INFO[code_serm]
+    reseau = charger_reseau_serm(inf["slug"])
+    if not avec_departementales and "CL_ADMIN" in reseau.columns:
+        # Par defaut : Autoroutes + Nationales uniquement (~2% des troncons,
+        # chargement ~50x plus rapide que le reseau complet).
+        reseau = reseau[
+            reseau["CL_ADMIN"].isin(["Autoroute", "Nationale"])
+        ].copy()
+    perimetres = charger_perimetres_serm()
+    peri = perimetres[perimetres["code_serm"] == code_serm]
+    return carte_trafic_serm(
+        reseau, peri, metrique, style_mapbox,
+        titre=f"{inf['nom']} — {metrique}",
+    )
+
+
 @st.cache_data(show_spinner="Chargement de la matrice inter-SERM...")
 def _matrice(signature: float):
     del signature
@@ -414,7 +444,7 @@ elif page == "Socle par SERM":
     st.divider()
 
     st.subheader("Carte de trafic sur le reseau du SERM")
-    col_sel_carte, _ = st.columns([1, 3])
+    col_sel_carte, col_opt, _ = st.columns([1, 1, 2])
     with col_sel_carte:
         metrique_carte = st.selectbox(
             "Indicateur",
@@ -424,12 +454,16 @@ elif page == "Socle par SERM":
                 "VL_jour": "Vehicules Legers / jour",
             }[x],
         )
+    with col_opt:
+        avec_dept = st.checkbox(
+            "Inclure les departementales",
+            value=False,
+            help="Les voies departementales representent ~98 % des troncons. "
+                 "Decocher pour un affichage rapide (Autoroutes + Nationales uniquement).",
+        )
     try:
-        reseau_gdf = _reseau(info["slug"], signature)
-        peri_courant = perimetres_gdf[perimetres_gdf["code_serm"] == code]
-        fig_carte_serm = carte_trafic_serm(
-            reseau_gdf, peri_courant, metrique_carte, _style_mapbox(),
-            titre=f"{info['nom']} - {metrique_carte}",
+        fig_carte_serm = _carte_trafic(
+            code, metrique_carte, _style_mapbox(), signature, avec_dept
         )
         st.plotly_chart(fig_carte_serm, use_container_width=True)
     except Exception as exc:
