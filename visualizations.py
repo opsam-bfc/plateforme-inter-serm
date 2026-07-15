@@ -963,10 +963,14 @@ def heatmap_epci_x_epci(
 ) -> go.Figure:
     """Heatmap des volumes VL entre EPCI pour un SERM donne.
 
-    Utilise les colonnes ``epci_O_nom`` / ``epci_D_nom`` si disponibles
-    (ajoutees par le pipeline de pre-calcul) pour afficher les noms
-    d'EPCI plutot que les codes.
+    Les flux internes (epci_O == epci_D) sont conserves dans la matrice
+    mais distingues visuellement : cellules grises, exclus de l'echelle
+    de couleur (zmin/zmax calcules sur les echanges inter-EPCI uniquement).
+
+    Utilise les colonnes ``epci_O_nom`` / ``epci_D_nom`` si disponibles.
     """
+    import numpy as np
+
     sous = echanges[
         (echanges["serm"] == code_serm) & (echanges["typologie"] == typologie)
     ].copy()
@@ -985,42 +989,87 @@ def heatmap_epci_x_epci(
     )
     sous = sous[sous["epci_O"].isin(top_epci) & sous["epci_D"].isin(top_epci)]
 
-    # Pivot sur les codes pour l'aggrégation, index/colonnes = noms
+    # Pivot sur les codes pour l'agrégation, index/colonnes = noms
     pivot_codes = sous.pivot_table(
         index="epci_O", columns="epci_D", values="volume", aggfunc="sum"
     ).fillna(0)
 
     # Correspondance code -> nom (premiere occurrence)
-    map_o = (
-        sous.drop_duplicates("epci_O").set_index("epci_O")[col_o].to_dict()
-    )
-    map_d = (
-        sous.drop_duplicates("epci_D").set_index("epci_D")[col_d].to_dict()
-    )
+    map_o = sous.drop_duplicates("epci_O").set_index("epci_O")[col_o].to_dict()
+    map_d = sous.drop_duplicates("epci_D").set_index("epci_D")[col_d].to_dict()
     pivot_noms = pivot_codes.rename(index=map_o, columns=map_d)
+
+    rows = list(pivot_noms.index)
+    cols = list(pivot_noms.columns)
+    z_full = pivot_noms.values.astype(float)
+
+    # Masquer les flux internes (diagonale) dans la matrice de couleur :
+    # NaN → cellule blanche, hors du calcul de l'echelle.
+    z_plot = z_full.copy()
+    diagonale: list[tuple[int, int]] = []  # (idx_row, idx_col) des cellules internes
+    for i, label in enumerate(rows):
+        if label in cols:
+            j = cols.index(label)
+            z_plot[i, j] = np.nan
+            diagonale.append((i, j))
+
+    # Echelle calibree sur les echanges inter-EPCI uniquement
+    valeurs_hors_diag = z_plot[~np.isnan(z_plot)]
+    zmin = float(valeurs_hors_diag.min()) if len(valeurs_hors_diag) > 0 else 0.0
+    zmax = float(valeurs_hors_diag.max()) if len(valeurs_hors_diag) > 0 else 1.0
 
     fig = go.Figure(
         go.Heatmap(
-            z=pivot_noms.values,
-            x=list(pivot_noms.columns),
-            y=list(pivot_noms.index),
+            z=z_plot,
+            x=cols,
+            y=rows,
             colorscale="Viridis",
+            zmin=zmin,
+            zmax=zmax,
             colorbar=dict(title="VL/j"),
+            # customdata transporte les valeurs reelles pour le hover
+            customdata=z_full,
             hovertemplate=(
                 "Origine : %{y}<br>Destination : %{x}"
-                "<br>Volume : %{z:,.0f} VL/j<extra></extra>"
+                "<br>Volume : %{customdata:,.0f} VL/j<extra></extra>"
             ),
         )
     )
+
+    # Cellules diagonales : rectangle gris + valeur en annotation
+    for i, j in diagonale:
+        val = z_full[i, j]
+        # Rectangle gris (layer="above" pour couvrir la cellule blanche NaN)
+        fig.add_shape(
+            type="rect",
+            xref="x", yref="y",
+            x0=j - 0.5, x1=j + 0.5,
+            y0=i - 0.5, y1=i + 0.5,
+            fillcolor="#BDBDBD",
+            line=dict(color="white", width=1),
+            layer="above",
+        )
+        # Valeur du flux interne inscrite dans la cellule
+        fig.add_annotation(
+            x=cols[j], y=rows[i],
+            text=f"{val:,.0f}",
+            showarrow=False,
+            font=dict(size=8, color="#424242"),
+            xref="x", yref="y",
+        )
+
     fig.update_layout(
         title=(
             f"Échanges EPCI × EPCI — {info_serm(code_serm)['nom']}"
             f" ({typologie})"
+            "<br><sup style='color:#9E9E9E'>"
+            "Cellules grises = flux internes (hors echelle de couleur)"
+            "</sup>"
         ),
         xaxis_title="EPCI destination",
         yaxis_title="EPCI origine",
         xaxis=dict(tickangle=-40),
         height=560,
-        margin={"l": 220, "r": 20, "t": 60, "b": 200},
+        margin={"l": 220, "r": 20, "t": 80, "b": 200},
     )
     return fig
