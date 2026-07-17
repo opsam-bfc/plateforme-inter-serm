@@ -443,9 +443,7 @@ def info_serm(code: int) -> dict:
 # ---------------------------------------------------------------------------
 
 def charger_stations_avatar() -> pd.DataFrame:
-    """Charge ``data/avatar/stations.parquet`` (metadonnees des stations).
-
-    Produit par ``scripts/prepare_avatar_stations.py``.
+    """Charge ``data/avatar/metadonnees_stations_bfc.csv`` (stations).
 
     Returns:
         DataFrame avec colonnes : count_point_id, count_point_name,
@@ -453,39 +451,64 @@ def charger_stations_avatar() -> pd.DataFrame:
         route_normalisee, op_direction, nb_heures_2026, ...
 
     Raises:
-        FileNotFoundError: Si le bundle AVATAR n'a pas encore ete genere.
+        FileNotFoundError: Si le fichier de metadonnees est absent.
     """
-    chemin = fichier_data("avatar/stations.parquet")
+    chemin = fichier_data("avatar/metadonnees_stations_bfc.csv")
     if not chemin.is_file():
         raise FileNotFoundError(
             f"Fichier introuvable : {chemin}. "
-            "Lancer scripts/prepare_avatar_stations.py d'abord."
+            "Copier sortie_avatar_bfc/metadonnees_stations_bfc.csv "
+            "dans data/avatar/."
         )
-    return pd.read_parquet(chemin)
+    df = pd.read_csv(chemin, sep=";", decimal=".", dtype=str)
+    df["count_point_id"] = pd.to_numeric(
+        df["count_point_id"], errors="coerce"
+    )
+    for col in ("longitude", "latitude"):
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+    for col in ("nb_heures_2026", "operator_id"):
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+    if "disponible_2026" in df.columns:
+        df["disponible_2026"] = (
+            pd.to_numeric(df["disponible_2026"], errors="coerce")
+            .fillna(0).astype(bool)
+        )
+        df = df[df["disponible_2026"]].copy()
+    return df.reset_index(drop=True)
 
 
 def charger_profils_avatar() -> pd.DataFrame:
-    """Charge ``data/avatar/profils_horaires.parquet``.
+    """Charge ``data/avatar/moyenne_horaire_consolide_2026.csv``.
 
     Chaque ligne = (count_point_id, heure 0-23, flow_moy, pl_pct_moy,
-    vitesse_moy).  Profil moyen toutes periodes confondues.
+    vitesse_moy). Profil moyen toutes periodes confondues.
 
-    Produit par ``scripts/prepare_avatar_stations.py``.
+    Genere par ``generer_moyenne_horaire.py`` (script standalone).
 
     Returns:
         DataFrame avec colonnes : count_point_id, heure, flow_moy,
-        pl_pct_moy, vitesse_moy (certaines peuvent etre NaN si absentes).
+        pl_pct_moy, vitesse_moy (NaN si absentes).
 
     Raises:
-        FileNotFoundError: Si le bundle AVATAR n'a pas encore ete genere.
+        FileNotFoundError: Si le fichier CSV n'a pas encore ete genere.
     """
-    chemin = fichier_data("avatar/profils_horaires.parquet")
+    chemin = fichier_data("avatar/moyenne_horaire_consolide_2026.csv")
     if not chemin.is_file():
         raise FileNotFoundError(
             f"Fichier introuvable : {chemin}. "
-            "Lancer scripts/prepare_avatar_stations.py d'abord."
+            "Lancer generer_moyenne_horaire.py puis copier le resultat "
+            "dans data/avatar/."
         )
-    return pd.read_parquet(chemin)
+    df = pd.read_csv(chemin, sep=";", decimal=".")
+    df["count_point_id"] = pd.to_numeric(
+        df["count_point_id"], errors="coerce"
+    )
+    df["heure"] = pd.to_numeric(df["heure"], errors="coerce").astype("Int64")
+    for col in ("flow_moy", "pl_pct_moy", "vitesse_moy"):
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+    return df
 
 
 @lru_cache(maxsize=8)
