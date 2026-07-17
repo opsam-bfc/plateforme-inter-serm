@@ -66,6 +66,14 @@ from visualizations import (  # noqa: E402
     lignes_de_desir,
     sankey_vl_pl_par_voie,
 )
+from visualizations_avatar import (  # noqa: E402
+    carte_stations_avatar,
+    profil_horaire_avatar,
+)
+from data_loader import (  # noqa: E402,F811
+    charger_stations_avatar,
+    charger_profils_avatar,
+)
 from pdf_export import (  # noqa: E402
     generer_rapport_global,
     generer_rapport_serm,
@@ -265,6 +273,7 @@ with st.sidebar:
         "Socle par SERM": "search",
         "Corridors & top flux OD": "route",
         "Echanges inter-SERM & EPCI": "compare_arrows",
+        "Comptages AVATAR": "sensors",
         "Contexte enrichi (datagouv)": "hub",
         "Reglages": "settings",
     }
@@ -277,6 +286,7 @@ with st.sidebar:
             "Zoom sur un SERM (carte, Sankey, distances)",
             "Top flux VL internes / emis / recus",
             "Matrices OD inter-SERM et par EPCI",
+            "Profils horaires DIR Est & DIR Centre-Est",
             "Donnees contextuelles INSEE / SNCF",
             "Perimetres, regeneration du bundle",
         ],
@@ -682,7 +692,145 @@ elif page == "Echanges inter-SERM & EPCI":
 
 
 # =========================================================================
-# Page 5 : Contexte enrichi (datagouv)
+# Page 5 : Comptages AVATAR
+# =========================================================================
+
+elif page == "Comptages AVATAR":
+    import geopandas as gpd
+    from shapely.geometry import Point
+
+    st.header("Comptages horaires AVATAR — DIR Est & DIR Centre-Est")
+    st.caption(
+        "Profils temporels horaires moyens (0-23h) des stations de "
+        "comptage permanentes sur le reseau national en BFC. "
+        "Donnees : API AVATAR Cerema."
+    )
+
+    # ── Chargement du bundle AVATAR ──────────────────────────────────────
+    try:
+        stations_all = charger_stations_avatar()
+        profils_all = charger_profils_avatar()
+    except FileNotFoundError as exc:
+        st.warning(
+            f"Bundle AVATAR introuvable : {exc}\n\n"
+            "Lancer d'abord :\n"
+            "```\n"
+            "python scripts/prepare_avatar_stations.py "
+            "--metadonnees sortie_avatar_bfc/metadonnees_stations_bfc.csv "
+            "--horaire sortie_avatar_bfc/horaire_consolide_2026.csv\n"
+            "```"
+        )
+        st.stop()
+
+    # ── Selecteur SERM (identique aux autres pages) ──────────────────────
+    code_serm_av = st.selectbox(
+        "SERM",
+        codes_zones(inclure_hors_serm=False),
+        format_func=lambda c: SERM_INFO[c]["nom"],
+        key="code_serm_avatar",
+    )
+
+    peri_serm_av = perimetres_gdf[
+        perimetres_gdf["code_serm"] == code_serm_av
+    ].copy()
+
+    # Filtrage spatial : stations dans le perimetre du SERM selectionne
+    if not peri_serm_av.empty:
+        union_serm = peri_serm_av.to_crs(4326).union_all()
+        mask_serm = stations_all.apply(
+            lambda r: Point(r["longitude"], r["latitude"]).within(union_serm),
+            axis=1,
+        )
+        stations_serm = stations_all[mask_serm].copy()
+    else:
+        stations_serm = stations_all.copy()
+
+    st.caption(
+        f"{len(stations_serm)} station(s) avec donnees dans ce SERM — "
+        f"cliquer sur un point pour afficher son profil horaire."
+    )
+
+    # ── Etat de la station selectionnee (session state) ──────────────────
+    if "avatar_station_id" not in st.session_state:
+        st.session_state["avatar_station_id"] = None
+
+    # ── Carte des stations ───────────────────────────────────────────────
+    fig_carte_av = carte_stations_avatar(
+        stations_serm,
+        peri_serm_av,
+        style_mapbox=_style_mapbox(),
+        station_id_sel=st.session_state["avatar_station_id"],
+    )
+    ev = st.plotly_chart(
+        fig_carte_av,
+        use_container_width=True,
+        on_select="rerun",
+        key="carte_avatar",
+    )
+
+    # Lecture du clic sur la carte
+    pts = (ev.selection.points if ev and ev.selection else [])
+    if pts:
+        cd = pts[0].get("customdata")
+        if cd and len(cd) >= 1:
+            st.session_state["avatar_station_id"] = int(cd[0])
+
+    # ── Profil horaire de la station selectionnee ─────────────────────────
+    station_id_av = st.session_state["avatar_station_id"]
+    if station_id_av is not None:
+        # Verifier que la station est bien dans ce SERM
+        if station_id_av not in stations_serm["count_point_id"].values:
+            st.session_state["avatar_station_id"] = None
+        else:
+            st.divider()
+            st.subheader("Profil horaire moyen")
+            fig_profil = profil_horaire_avatar(
+                profils_all, station_id_av, stations_serm
+            )
+            st.plotly_chart(fig_profil, use_container_width=True)
+
+            # Tableau de donnees brutes
+            with st.expander("Donnees brutes du profil (CSV)"):
+                profil_station = profils_all[
+                    profils_all["count_point_id"] == station_id_av
+                ].sort_values("heure").copy()
+                profil_station["heure"] = profil_station["heure"].apply(
+                    lambda h: f"{int(h):02d}h"
+                )
+                st.dataframe(
+                    profil_station.rename(columns={
+                        "heure": "Heure",
+                        "flow_moy": "Debit moy. (veh/h)",
+                        "pl_pct_moy": "Part PL (%)",
+                        "vitesse_moy": "Vitesse moy. (km/h)",
+                    }).drop(columns=["count_point_id"], errors="ignore"),
+                    use_container_width=True,
+                    hide_index=True,
+                )
+                csv_av = profil_station.to_csv(index=False, sep=";").encode(
+                    "utf-8-sig"
+                )
+                row_st_av = stations_serm[
+                    stations_serm["count_point_id"] == station_id_av
+                ].iloc[0]
+                slug_av = str(
+                    row_st_av.get("count_point_name") or station_id_av
+                ).replace(" ", "_").lower()
+                st.download_button(
+                    ":material/download: Exporter le profil (CSV)",
+                    csv_av,
+                    f"profil_avatar_{slug_av}.csv",
+                    "text/csv",
+                )
+    else:
+        st.info(
+            ":material/touch_app: Cliquer sur une station sur la carte "
+            "pour afficher son profil horaire."
+        )
+
+
+# =========================================================================
+# Page 6 : Contexte enrichi (datagouv)
 # =========================================================================
 
 elif page == "Contexte enrichi (datagouv)":

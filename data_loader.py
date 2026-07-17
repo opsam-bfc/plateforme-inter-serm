@@ -438,6 +438,56 @@ def info_serm(code: int) -> dict:
     return SERM_INFO.get(code, SERM_INFO[0])
 
 
+# ---------------------------------------------------------------------------
+# Comptages AVATAR (DIR Est / DIR Centre-Est)
+# ---------------------------------------------------------------------------
+
+def charger_stations_avatar() -> pd.DataFrame:
+    """Charge ``data/avatar/stations.parquet`` (metadonnees des stations).
+
+    Produit par ``scripts/prepare_avatar_stations.py``.
+
+    Returns:
+        DataFrame avec colonnes : count_point_id, count_point_name,
+        operator_name, longitude, latitude, op_road_name,
+        route_normalisee, op_direction, nb_heures_2026, ...
+
+    Raises:
+        FileNotFoundError: Si le bundle AVATAR n'a pas encore ete genere.
+    """
+    chemin = fichier_data("avatar/stations.parquet")
+    if not chemin.is_file():
+        raise FileNotFoundError(
+            f"Fichier introuvable : {chemin}. "
+            "Lancer scripts/prepare_avatar_stations.py d'abord."
+        )
+    return pd.read_parquet(chemin)
+
+
+def charger_profils_avatar() -> pd.DataFrame:
+    """Charge ``data/avatar/profils_horaires.parquet``.
+
+    Chaque ligne = (count_point_id, heure 0-23, flow_moy, pl_pct_moy,
+    vitesse_moy).  Profil moyen toutes periodes confondues.
+
+    Produit par ``scripts/prepare_avatar_stations.py``.
+
+    Returns:
+        DataFrame avec colonnes : count_point_id, heure, flow_moy,
+        pl_pct_moy, vitesse_moy (certaines peuvent etre NaN si absentes).
+
+    Raises:
+        FileNotFoundError: Si le bundle AVATAR n'a pas encore ete genere.
+    """
+    chemin = fichier_data("avatar/profils_horaires.parquet")
+    if not chemin.is_file():
+        raise FileNotFoundError(
+            f"Fichier introuvable : {chemin}. "
+            "Lancer scripts/prepare_avatar_stations.py d'abord."
+        )
+    return pd.read_parquet(chemin)
+
+
 @lru_cache(maxsize=8)
 def _mtime(chemin: str) -> float:
     p = Path(chemin)
