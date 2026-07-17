@@ -44,7 +44,9 @@ from data_loader import (  # noqa: E402
     charger_limites_epci,
     charger_matrice_inter_serm,
     charger_perimetres_serm,
+    charger_profils_avatar,
     charger_reseau_serm,
+    charger_stations_avatar,
     charger_synthese_serm,
     charger_top_od_communes,
     charger_top_od_vl,
@@ -69,10 +71,6 @@ from visualizations import (  # noqa: E402
 from visualizations_avatar import (  # noqa: E402
     carte_stations_avatar,
     profil_horaire_avatar,
-)
-from data_loader import (  # noqa: E402,F811
-    charger_stations_avatar,
-    charger_profils_avatar,
 )
 from pdf_export import (  # noqa: E402
     generer_rapport_global,
