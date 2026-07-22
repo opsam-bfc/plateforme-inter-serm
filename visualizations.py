@@ -660,7 +660,7 @@ def _libelle_epci_lisible(nom: str, max_len: int = 36) -> str:
         flags=re.IGNORECASE,
     )
     s = re.sub(r"^(CA|CC|CU|Métropole)\s+", "", s, flags=re.IGNORECASE)
-    s = re.sub(r"^de\s+", "", s, flags=re.IGNORECASE)
+    s = re.sub(r"^(de|du|des)\s+", "", s, flags=re.IGNORECASE)
     if " - " in s and len(s) > max_len:
         s = s.split(" - ", 1)[0].strip()
     if len(s) > max_len:
