@@ -275,7 +275,6 @@ with st.sidebar:
         f"<div class='brand-text'>"
         f"<p class='brand-name'>{_cfg.plateforme.nom}</p>"
         f"<p class='brand-desc'>{_cfg.plateforme.description}</p>"
-        f"<p class='brand-inst'>{_cfg.plateforme.institution}</p>"
         f"</div>"
         f"</div>",
         unsafe_allow_html=True,
