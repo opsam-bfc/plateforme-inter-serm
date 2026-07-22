@@ -63,7 +63,7 @@ zones:
       code: 2
 
   - code: 3
-    nom: "SERM Bisontain"
+    nom: "SERM Bisontin"
     nom_court: "Besançon"
     slug: "besancon"
     couleur: "#1565C0"

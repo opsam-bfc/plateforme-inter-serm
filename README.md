@@ -23,7 +23,7 @@ deduction (`Total - PL_charges - PL_vides`).
 
 - `M1 = 1` -> SERM Dijonnais (891 zones, 20 EPCI)
 - `M1 = 2` -> SERM Nord Franche-Comte (263 zones, 6 EPCI)
-- `M2 = 3` -> SERM Bisontain (732 zones, 16 EPCI)
+- `M2 = 3` -> SERM Bisontin (732 zones, 16 EPCI)
 
 Les perimetres ne sont pas figes : le pipeline de precalcul accepte un
 nouveau `lookup_dep_com_epci_macrozone.csv` pour regenerer le bundle

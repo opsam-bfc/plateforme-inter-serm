@@ -41,7 +41,7 @@ except Exception as _cfg_err:
             "slug": "dijon", "couleur": "#C62828"},
         2: {"code": 2, "nom": "SERM Nord Franche-Comte", "nom_court": "NFC",
             "slug": "nfc", "couleur": "#2E7D32"},
-        3: {"code": 3, "nom": "SERM Bisontain", "nom_court": "Besancon",
+        3: {"code": 3, "nom": "SERM Bisontin", "nom_court": "Besancon",
             "slug": "besancon", "couleur": "#1565C0"},
         0: {"code": 0, "nom": "Reste BFC (hors SERM)", "nom_court": "Reste BFC",
             "slug": "reste_bfc", "couleur": "#90A4AE"},
