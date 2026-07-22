@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 from typing import Iterable, Optional
 
 import pandas as pd
@@ -613,8 +614,6 @@ def _couleur_depuis_volume(v_norm: float, palette: str = "YlOrRd") -> str:
 
 def _libelle_epci_lisible(nom: str, max_len: int = 36) -> str:
     """Raccourcit un nom d'EPCI pour un affichage carte lisible."""
-    import re
-
     s = " ".join(str(nom or "").split())
     if not s:
         return ""
