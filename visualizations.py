@@ -43,6 +43,42 @@ _COULEUR_TITRE = "#0E2A47"
 _COULEUR_GRILLE = "#E6EBF1"
 _COULEUR_AXE = "#C5CFDA"
 
+# Police disponible via les glyphs MapLibre (demotiles) — obligatoire pour
+# afficher du texte sur un fond raster (OSM / Carto n'embarquent pas de fonts).
+_FONT_CARTE = "Open Sans Regular"
+_FONT_CARTE_BOLD = "Open Sans Bold"
+
+
+def _style_carte_avec_labels() -> dict:
+    """Style MapLibre raster (Carto Positron) + glyphs pour les libellés.
+
+    Les styles Plotly ``open-street-map`` / ``carto-positron`` sont des
+    tuiles raster sans atlas de polices : ``mode="text"`` / ``markers+text``
+    n'affiche alors que les marqueurs. Ce style injecte une URL de glyphs
+    MapLibre pour rendre les noms EPCI visibles sans jeton Mapbox.
+    """
+    return {
+        "version": 8,
+        "name": "serm-carto-labels",
+        "sources": {
+            "carto": {
+                "type": "raster",
+                "tiles": [
+                    "https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png",
+                    "https://b.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png",
+                    "https://c.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png",
+                    "https://d.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png",
+                ],
+                "tileSize": 256,
+                "attribution": "&copy; OpenStreetMap &copy; CARTO",
+            }
+        },
+        "layers": [
+            {"id": "carto", "type": "raster", "source": "carto", "minzoom": 0, "maxzoom": 20}
+        ],
+        "glyphs": "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf",
+    }
+
 
 def _theme_layout(**extra) -> dict:
     """Layout Plotly commun (typo, fonds, marges de base)."""
@@ -624,7 +660,7 @@ def _libelle_epci_lisible(nom: str, max_len: int = 36) -> str:
         flags=re.IGNORECASE,
     )
     s = re.sub(r"^(CA|CC|CU|Métropole)\s+", "", s, flags=re.IGNORECASE)
-    s = re.sub(r"^de\s+", "", s, flags=re.IGNORECASE)
+    s = re.sub(r"^(de|du|des)\s+", "", s, flags=re.IGNORECASE)
     if " - " in s and len(s) > max_len:
         s = s.split(" - ", 1)[0].strip()
     if len(s) > max_len:
@@ -698,24 +734,13 @@ def _ajouter_polygones_gdf(
     )
 
 
-def _labels_centroides(
-    fig: go.Figure,
+def _points_labels_gdf(
     gdf,
     col_nom: str,
-    taille: int = 10,
-    couleur: str = "#37474F",
     libelles: list[str] | None = None,
-) -> None:
-    """Ajoute des labels texte aux centroides d'un GeoDataFrame.
-
-    Utilise ``Scattermap`` (MapLibre) en ``markers+text`` : le mode ``text``
-    de Scattermapbox est invisible sur les fonds raster (OSM / Carto).
-
-    ``libelles`` permet de fournir des textes déjà formatés (ex. noms EPCI
-    raccourcis) à la place de ``gdf[col_nom]``.
-    """
+) -> tuple[list[float], list[float], list[str]]:
+    """Calcule des points représentatifs + libellés pour un GeoDataFrame."""
     centroides = gdf.copy()
-    # Point représentatif en projection métrique pour rester dans le polygone
     try:
         gdf_m = centroides.to_crs(2154)
         pts = gdf_m.geometry.representative_point().to_crs(4326)
@@ -733,31 +758,86 @@ def _labels_centroides(
 
     centroides = centroides.dropna(subset=["_cx", "_cy", col_txt])
     if centroides.empty:
-        return
-
-    textes = centroides[col_txt].astype(str).tolist()
-    fig.add_trace(
-        go.Scattermap(
-            lat=centroides["_cy"].tolist(),
-            lon=centroides["_cx"].tolist(),
-            mode="markers+text",
-            text=textes,
-            textposition="top center",
-            textfont=dict(
-                size=taille,
-                color=couleur,
-                family="Arial, Helvetica, sans-serif",
-            ),
-            marker=dict(
-                size=7,
-                color=couleur,
-                opacity=0.85,
-            ),
-            hovertext=textes,
-            hoverinfo="text",
-            showlegend=False,
-        )
+        return [], [], []
+    return (
+        centroides["_cx"].astype(float).tolist(),
+        centroides["_cy"].astype(float).tolist(),
+        centroides[col_txt].astype(str).tolist(),
     )
+
+
+def _layer_labels_symbol(
+    lons: list[float],
+    lats: list[float],
+    textes: list[str],
+    couleur: str = "#0E2A47",
+    taille: int = 13,
+) -> dict:
+    """Couche MapLibre symbol (texte) — fiable dès que le style a des glyphs."""
+    features = []
+    for lon, lat, txt in zip(lons, lats, textes):
+        features.append(
+            {
+                "type": "Feature",
+                "geometry": {
+                    "type": "Point",
+                    "coordinates": [float(lon), float(lat)],
+                },
+                "properties": {"name": str(txt)},
+            }
+        )
+    return {
+        "sourcetype": "geojson",
+        "source": {"type": "FeatureCollection", "features": features},
+        "type": "symbol",
+        "below": "",
+        "symbol": {
+            "text": "name",
+            "textfont": {
+                "size": taille,
+                "color": couleur,
+                "family": _FONT_CARTE_BOLD,
+            },
+            "textposition": "middle center",
+        },
+    }
+
+
+def _labels_centroides(
+    fig: go.Figure,
+    gdf,
+    col_nom: str,
+    taille: int = 10,
+    couleur: str = "#37474F",
+    libelles: list[str] | None = None,
+) -> None:
+    """Ajoute des labels texte aux centroides (trace Scattermap mode=text).
+
+    Nécessite un ``map_style`` avec URL ``glyphs`` (voir
+    ``_style_carte_avec_labels``), sinon le texte reste invisible.
+    """
+    lons, lats, textes = _points_labels_gdf(gdf, col_nom, libelles)
+    if not textes:
+        return
+    # Halo blanc puis texte principal
+    for taille_h, couleur_h in ((taille + 2, "#FFFFFF"), (taille, couleur)):
+        fig.add_trace(
+            go.Scattermap(
+                lat=lats,
+                lon=lons,
+                mode="text",
+                text=textes,
+                textposition="middle center",
+                textfont=dict(
+                    size=taille_h,
+                    color=couleur_h,
+                    family=_FONT_CARTE_BOLD if couleur_h != "#FFFFFF" else _FONT_CARTE,
+                ),
+                hovertext=textes if couleur_h != "#FFFFFF" else None,
+                hoverinfo="text" if couleur_h != "#FFFFFF" else "skip",
+                showlegend=False,
+            )
+        )
 
 
 def _labels_points_flux(
@@ -781,15 +861,14 @@ def _labels_points_flux(
         go.Scattermap(
             lat=pts[col_lat].tolist(),
             lon=pts[col_lon].tolist(),
-            mode="markers+text",
+            mode="text",
             text=textes,
             textposition="top center",
             textfont=dict(
                 size=taille,
                 color=couleur,
-                family="Arial, Helvetica, sans-serif",
+                family=_FONT_CARTE,
             ),
-            marker=dict(size=6, color=couleur, opacity=0.8),
             hovertext=textes,
             hoverinfo="text",
             showlegend=False,
@@ -853,6 +932,7 @@ def lignes_de_desir(
     est_echange = (typologie in ("echange_emis", "echange_recus"))
 
     fig = go.Figure()
+    layers_labels: list[dict] = []
 
     # -- Couche 0 : contours + noms des EPCI du SERM -------------------------
     epci_serm = None
@@ -874,11 +954,16 @@ def lignes_de_desir(
             libelles_epci = [
                 _libelle_epci_lisible(n) for n in epci_serm["NOM"].tolist()
             ]
-            _labels_centroides(
-                fig, epci_serm, "NOM",
-                taille=13, couleur="#0E2A47",
-                libelles=libelles_epci,
+            lons_e, lats_e, txts_e = _points_labels_gdf(
+                epci_serm, "NOM", libelles_epci
             )
+            if txts_e:
+                layers_labels.append(
+                    _layer_labels_symbol(
+                        lons_e, lats_e, txts_e,
+                        couleur="#0E2A47", taille=14,
+                    )
+                )
 
     # -- Couche 1 : limites communales (flux internes) -----------------------
     if est_interne and communes_gdf is not None:
@@ -970,11 +1055,16 @@ def lignes_de_desir(
                 libelles_ext = [
                     _libelle_epci_lisible(n) for n in epci_sous["NOM"].tolist()
                 ]
-                _labels_centroides(
-                    fig, epci_sous, "NOM",
-                    taille=12, couleur="#BF360C",
-                    libelles=libelles_ext,
+                lons_x, lats_x, txts_x = _points_labels_gdf(
+                    epci_sous, "NOM", libelles_ext
                 )
+                if txts_x:
+                    layers_labels.append(
+                        _layer_labels_symbol(
+                            lons_x, lats_x, txts_x,
+                            couleur="#BF360C", taille=13,
+                        )
+                    )
 
         # Labels aux extremites des flux (noms, pas codes)
         if typologie == "echange_emis":
@@ -1091,13 +1181,13 @@ def lignes_de_desir(
         }
 
     zoom = 8.5 if est_interne else 7.2
-    # Scattermap (MapLibre) : map_style / map_center / map_zoom
-    # (le mode text de Scattermapbox est invisible sur OSM / Carto).
+    # Style custom avec glyphs MapLibre + couches symbol pour les noms EPCI.
     fig.update_layout(
         **_theme_layout(
-            map_style=style_mapbox,
+            map_style=_style_carte_avec_labels(),
             map_center=centre,
             map_zoom=zoom,
+            map_layers=layers_labels,
             margin={"r": 5, "t": 40, "l": 5, "b": 5},
             height=660,
             title=(
