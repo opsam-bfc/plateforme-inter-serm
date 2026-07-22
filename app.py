@@ -123,6 +123,24 @@ def _fmt_milliers(val) -> str:
     return f"{int(round(float(val))):,}".replace(",", " ")
 
 
+def _page_header(titre: str, sous_titre: str | None = None) -> None:
+    """En-tête de page unifié (kicker institution + titre + lead)."""
+    institution = cfg().plateforme.institution
+    lead = (
+        f"<p class='page-lead'>{sous_titre}</p>"
+        if sous_titre
+        else ""
+    )
+    st.markdown(
+        f"<div class='page-hero'>"
+        f"<p class='page-kicker'>{institution}</p>"
+        f"<h1 class='page-title'>{titre}</h1>"
+        f"{lead}"
+        f"</div>",
+        unsafe_allow_html=True,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Chargements (caches)
 # ---------------------------------------------------------------------------
@@ -252,10 +270,14 @@ def _limites_epci(signature: float):
 with st.sidebar:
     _cfg = cfg()
     st.markdown(
-        f"<h1 style='color:#E0E0E0; font-size:1.4rem; margin-bottom:0;'>"
-        f"{_cfg.plateforme.nom}</h1>"
-        f"<p style='color:#90A4AE; font-size:0.85rem; margin-top:4px;'>"
-        f"{_cfg.plateforme.description}</p>",
+        f"<div class='brand-block'>"
+        f"<div class='brand-mark'>SERM</div>"
+        f"<div class='brand-text'>"
+        f"<p class='brand-name'>{_cfg.plateforme.nom}</p>"
+        f"<p class='brand-desc'>{_cfg.plateforme.description}</p>"
+        f"<p class='brand-inst'>{_cfg.plateforme.institution}</p>"
+        f"</div>"
+        f"</div>",
         unsafe_allow_html=True,
     )
     st.divider()
@@ -322,10 +344,10 @@ except Exception as exc:
 # =========================================================================
 
 if page == "Vue d'ensemble":
-    st.header("Vue d'ensemble des trois SERM de Bourgogne-Franche-Comte")
-    st.caption(
-        "Indicateurs agreges issus de la synthese OPSAM Ref2024, avec les "
-        "volumes VL reconstitues par soustraction Total - PL (chargés + vides)."
+    _page_header(
+        "Vue d'ensemble des trois SERM de Bourgogne-Franche-Comté",
+        "Indicateurs agrégés issus de la synthèse OPSAM Ref2024, avec les "
+        "volumes VL reconstitués par soustraction Total − PL (chargés + vides).",
     )
 
     _codes_actifs = codes_zones(inclure_hors_serm=False)
@@ -447,7 +469,11 @@ if page == "Vue d'ensemble":
 # =========================================================================
 
 elif page == "Socle par SERM":
-    st.header("Socle de connaissance par SERM")
+    _page_header(
+        "Socle de connaissance par SERM",
+        "Carte de trafic, répartition VL/PL, Sankey et profils par classes "
+        "de distance pour le territoire sélectionné.",
+    )
 
     col_sel, _ = st.columns([1, 3])
     with col_sel:
@@ -547,11 +573,11 @@ elif page == "Socle par SERM":
 # =========================================================================
 
 elif page == "Corridors & top flux OD":
-    st.header("Corridors a enjeux - flux VL par commune / EPCI")
-    st.caption(
+    _page_header(
+        "Corridors à enjeux — flux VL par commune / EPCI",
         "Arcs proportionnels aux flux VL (taille + couleur). "
-        "Flux internes agreges a la commune (zones IRIS regroupees). "
-        "Flux externes agreges a l'EPCI de destination/origine."
+        "Flux internes agrégés à la commune ; flux externes agrégés "
+        "à l'EPCI de destination / origine.",
     )
 
     col_serm, col_typo, col_nb, col_seuil = st.columns([1, 1, 1, 1])
@@ -629,7 +655,11 @@ elif page == "Corridors & top flux OD":
 # =========================================================================
 
 elif page == "Echanges inter-SERM & EPCI":
-    st.header("Echanges entre SERM et entre EPCI")
+    _page_header(
+        "Échanges entre SERM et entre EPCI",
+        "Matrices origin–destination inter-SERM et focus sur les échanges "
+        "EPCI × EPCI au sein d'un territoire.",
+    )
 
     matrice = _matrice(signature)
     st.plotly_chart(heatmap_inter_serm(matrice), use_container_width=True)
@@ -697,11 +727,11 @@ elif page == "Comptages AVATAR":
     import geopandas as gpd
     from shapely.geometry import Point
 
-    st.header("Comptages horaires AVATAR — DIR Est & DIR Centre-Est")
-    st.caption(
-        "Profils temporels horaires moyens (0-23h) des stations de "
-        "comptage permanentes sur le reseau national en BFC. "
-        "Donnees : API AVATAR Cerema."
+    _page_header(
+        "Comptages horaires AVATAR — DIR Est & DIR Centre-Est",
+        "Profils temporels horaires moyens (0–23 h) des stations de "
+        "comptage permanentes sur le réseau national en BFC. "
+        "Données : API AVATAR Cerema.",
     )
 
     # ── Chargement du bundle AVATAR ──────────────────────────────────────
@@ -832,11 +862,10 @@ elif page == "Comptages AVATAR":
 # =========================================================================
 
 elif page == "Contexte enrichi (datagouv)":
-    st.header("Contexte enrichi par les donnees data.gouv.fr")
-    st.caption(
-        "Cette page utilise le serveur MCP `user-datagouv` pour rechercher "
-        "des jeux de donnees pertinents (INSEE, gares, parts modales) "
-        "complementaires aux indicateurs OPSAM."
+    _page_header(
+        "Contexte enrichi par les données data.gouv.fr",
+        "Jeux de données complémentaires (INSEE, gares, parts modales) "
+        "via le serveur MCP data.gouv, en appui des indicateurs OPSAM.",
     )
     datagouv_context.afficher_panneau_contexte(perimetres_gdf)
 
@@ -846,9 +875,13 @@ elif page == "Contexte enrichi (datagouv)":
 # =========================================================================
 
 elif page == "Reglages":
-    st.header("Reglages - perimetres SERM et bundle de donnees")
+    _page_header(
+        "Réglages — périmètres SERM et bundle de données",
+        "Mettre à jour les périmètres, régénérer le bundle précalculé "
+        "ou exporter les livrables par SERM.",
+    )
     st.markdown(
-        "Les perimetres SERM peuvent evoluer. Pour mettre a jour la "
+        "Les périmètres SERM peuvent évoluer. Pour mettre à jour la "
         "plateforme :"
     )
     st.markdown(

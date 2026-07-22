@@ -146,11 +146,20 @@ def carte_stations_avatar(
         margin={"l": 0, "r": 0, "t": 40, "b": 0},
         height=520,
         title="Stations de comptage AVATAR — cliquer pour afficher le profil",
+        font=dict(family="Source Sans 3, Segoe UI, sans-serif", color="#243447"),
+        paper_bgcolor="rgba(0,0,0,0)",
         legend=dict(
-            bgcolor="rgba(30,30,30,0.75)",
-            font=dict(color="white", size=12),
+            bgcolor="rgba(255,255,255,0.92)",
+            bordercolor="#D5DCE5",
+            borderwidth=1,
+            font=dict(color="#243447", size=12),
             x=0.01,
             y=0.99,
+        ),
+        hoverlabel=dict(
+            bgcolor="white",
+            bordercolor="#D5DCE5",
+            font=dict(family="Source Sans 3, Segoe UI, sans-serif", size=12),
         ),
     )
     return fig
@@ -258,10 +267,10 @@ def profil_horaire_avatar(
             x=heures,
             y=profil["flow_moy"].round(1).tolist(),
             mode="lines+markers",
-            line=dict(color="#42A5F5", width=2.5),
+            line=dict(color="#1A6BB5", width=2.5),
             fill="tozeroy",
-            fillcolor="rgba(66,165,245,0.15)",
-            marker=dict(size=5, color="#42A5F5"),
+            fillcolor="rgba(26,107,181,0.14)",
+            marker=dict(size=5, color="#1A6BB5"),
             name="Débit",
             hovertemplate="%{x}h00 → %{y:.0f} veh/h<extra></extra>",
         ),
@@ -307,7 +316,8 @@ def profil_horaire_avatar(
         title_text="Heure",
         row=n_rows, col=1,
     )
-    fig.update_yaxes(gridcolor="#333", zerolinecolor="#555")
+    fig.update_yaxes(gridcolor="#E6EBF1", zerolinecolor="#C5CFDA", linecolor="#C5CFDA")
+    fig.update_xaxes(gridcolor="#E6EBF1", linecolor="#C5CFDA")
 
     titre_complet = f"<b>Profil horaire moyen — {nom_station}</b>"
     if sous_titre:
@@ -316,12 +326,23 @@ def profil_horaire_avatar(
         )
 
     fig.update_layout(
-        title=titre_complet,
+        title=dict(
+            text=titre_complet,
+            font=dict(family="Source Sans 3, Segoe UI, sans-serif", color="#0E2A47", size=15),
+        ),
         height=380 + 130 * (n_rows - 1),
         showlegend=False,
         margin={"l": 60, "r": 20, "t": 80, "b": 40},
-        plot_bgcolor="#1A1A2E",
-        paper_bgcolor="#1A1A2E",
-        font=dict(color="#E0E0E0"),
+        plot_bgcolor="#FFFFFF",
+        paper_bgcolor="rgba(0,0,0,0)",
+        font=dict(
+            family="Source Sans 3, Segoe UI, sans-serif",
+            color="#243447",
+        ),
+        hoverlabel=dict(
+            bgcolor="white",
+            bordercolor="#D5DCE5",
+            font=dict(family="Source Sans 3, Segoe UI, sans-serif", size=12, color="#243447"),
+        ),
     )
     return fig
