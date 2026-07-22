@@ -576,6 +576,7 @@ elif page == "Corridors & top flux OD":
     _page_header(
         "Corridors à enjeux — flux VL par commune / EPCI",
         "Arcs proportionnels aux flux VL (taille + couleur). "
+        "Contours et noms des EPCI du SERM toujours affichés. "
         "Flux internes agrégés à la commune ; flux externes agrégés "
         "à l'EPCI de destination / origine.",
     )
