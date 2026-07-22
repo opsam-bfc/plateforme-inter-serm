@@ -20,8 +20,29 @@
     --serm-font: "Source Sans 3", "Segoe UI", sans-serif;
 }
 
-html, body, [class*="css"], .stApp, .stMarkdown, .stText, .stCaption {
-    font-family: var(--serm-font) !important;
+html, body, .stApp, .stMarkdown, .stText, .stCaption {
+    font-family: var(--serm-font);
+}
+
+/* Ne pas écraser les polices d'icônes Material (sinon "keyboard_double_arrow_*"
+   s'affiche en texte au lieu du chevron de repli de la sidebar). */
+[data-testid="stIconMaterial"],
+[data-testid="stIconMaterial"] *,
+span[data-testid="stIconMaterial"],
+.material-icons,
+.material-symbols-rounded,
+.material-symbols-outlined,
+.material-symbols-sharp {
+    font-family: "Material Symbols Rounded", "Material Symbols Outlined",
+        "Material Icons", sans-serif !important;
+    font-style: normal !important;
+    font-weight: normal !important;
+    letter-spacing: normal !important;
+    text-transform: none !important;
+    white-space: nowrap !important;
+    word-wrap: normal !important;
+    direction: ltr !important;
+    -webkit-font-smoothing: antialiased;
 }
 
 .stApp {
@@ -57,11 +78,40 @@ section[data-testid="stSidebar"] h1,
 section[data-testid="stSidebar"] h2,
 section[data-testid="stSidebar"] h3,
 section[data-testid="stSidebar"] p,
-section[data-testid="stSidebar"] span,
 section[data-testid="stSidebar"] label,
 section[data-testid="stSidebar"] .stMarkdown {
     color: #E8EEF4 !important;
-    font-family: var(--serm-font) !important;
+    font-family: var(--serm-font);
+}
+
+/* Texte de navigation / captions uniquement — pas les icônes */
+section[data-testid="stSidebar"] .stRadio label span,
+section[data-testid="stSidebar"] .stMarkdown p,
+section[data-testid="stSidebar"] .stCaption {
+    color: #E8EEF4 !important;
+}
+
+/* Bouton natif de repli / ouverture de la sidebar */
+[data-testid="stSidebarCollapseButton"] button,
+[data-testid="collapsedControl"] button,
+button[kind="header"],
+section[data-testid="stSidebar"] button[kind="headerNoPadding"] {
+    color: #E8EEF4 !important;
+    background: rgba(255, 255, 255, 0.08) !important;
+    border: 1px solid rgba(255, 255, 255, 0.16) !important;
+    border-radius: 8px !important;
+}
+
+[data-testid="stSidebarCollapseButton"] button:hover,
+[data-testid="collapsedControl"] button:hover {
+    background: rgba(255, 255, 255, 0.14) !important;
+}
+
+[data-testid="stSidebarCollapseButton"] [data-testid="stIconMaterial"],
+[data-testid="collapsedControl"] [data-testid="stIconMaterial"] {
+    font-family: "Material Symbols Rounded", "Material Symbols Outlined",
+        "Material Icons", sans-serif !important;
+    color: #E8EEF4 !important;
 }
 
 section[data-testid="stSidebar"] .stCaption,
