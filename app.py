@@ -44,7 +44,9 @@ from data_loader import (  # noqa: E402
     charger_limites_epci,
     charger_matrice_inter_serm,
     charger_perimetres_serm,
+    charger_profils_avatar,
     charger_reseau_serm,
+    charger_stations_avatar,
     charger_synthese_serm,
     charger_top_od_communes,
     charger_top_od_vl,
@@ -65,6 +67,10 @@ from visualizations import (  # noqa: E402
     heatmap_inter_serm,
     lignes_de_desir,
     sankey_vl_pl_par_voie,
+)
+from visualizations_avatar import (  # noqa: E402
+    carte_stations_avatar,
+    profil_horaire_avatar,
 )
 from pdf_export import (  # noqa: E402
     generer_rapport_global,
@@ -115,6 +121,24 @@ def _fmt_milliers(val) -> str:
     if pd.isna(val):
         return "-"
     return f"{int(round(float(val))):,}".replace(",", " ")
+
+
+def _page_header(titre: str, sous_titre: str | None = None) -> None:
+    """En-tête de page unifié (kicker institution + titre + lead)."""
+    institution = cfg().plateforme.institution
+    lead = (
+        f"<p class='page-lead'>{sous_titre}</p>"
+        if sous_titre
+        else ""
+    )
+    st.markdown(
+        f"<div class='page-hero'>"
+        f"<p class='page-kicker'>{institution}</p>"
+        f"<h1 class='page-title'>{titre}</h1>"
+        f"{lead}"
+        f"</div>",
+        unsafe_allow_html=True,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -246,10 +270,14 @@ def _limites_epci(signature: float):
 with st.sidebar:
     _cfg = cfg()
     st.markdown(
-        f"<h1 style='color:#E0E0E0; font-size:1.4rem; margin-bottom:0;'>"
-        f"{_cfg.plateforme.nom}</h1>"
-        f"<p style='color:#90A4AE; font-size:0.85rem; margin-top:4px;'>"
-        f"{_cfg.plateforme.description}</p>",
+        f"<div class='brand-block'>"
+        f"<div class='brand-mark'>SERM</div>"
+        f"<div class='brand-text'>"
+        f"<p class='brand-name'>{_cfg.plateforme.nom}</p>"
+        f"<p class='brand-desc'>{_cfg.plateforme.description}</p>"
+        f"<p class='brand-inst'>{_cfg.plateforme.institution}</p>"
+        f"</div>"
+        f"</div>",
         unsafe_allow_html=True,
     )
     st.divider()
@@ -265,6 +293,7 @@ with st.sidebar:
         "Socle par SERM": "search",
         "Corridors & top flux OD": "route",
         "Echanges inter-SERM & EPCI": "compare_arrows",
+        "Comptages AVATAR": "sensors",
         "Contexte enrichi (datagouv)": "hub",
         "Reglages": "settings",
     }
@@ -277,6 +306,7 @@ with st.sidebar:
             "Zoom sur un SERM (carte, Sankey, distances)",
             "Top flux VL internes / emis / recus",
             "Matrices OD inter-SERM et par EPCI",
+            "Profils horaires DIR Est & DIR Centre-Est",
             "Donnees contextuelles INSEE / SNCF",
             "Perimetres, regeneration du bundle",
         ],
@@ -314,10 +344,10 @@ except Exception as exc:
 # =========================================================================
 
 if page == "Vue d'ensemble":
-    st.header("Vue d'ensemble des trois SERM de Bourgogne-Franche-Comte")
-    st.caption(
-        "Indicateurs agreges issus de la synthese OPSAM Ref2024, avec les "
-        "volumes VL reconstitues par soustraction Total - PL (chargés + vides)."
+    _page_header(
+        "Vue d'ensemble des trois SERM de Bourgogne-Franche-Comté",
+        "Indicateurs agrégés issus de la synthèse OPSAM Ref2024, avec les "
+        "volumes VL reconstitués par soustraction Total − PL (chargés + vides).",
     )
 
     _codes_actifs = codes_zones(inclure_hors_serm=False)
@@ -439,7 +469,11 @@ if page == "Vue d'ensemble":
 # =========================================================================
 
 elif page == "Socle par SERM":
-    st.header("Socle de connaissance par SERM")
+    _page_header(
+        "Socle de connaissance par SERM",
+        "Carte de trafic, répartition VL/PL, Sankey et profils par classes "
+        "de distance pour le territoire sélectionné.",
+    )
 
     col_sel, _ = st.columns([1, 3])
     with col_sel:
@@ -539,11 +573,11 @@ elif page == "Socle par SERM":
 # =========================================================================
 
 elif page == "Corridors & top flux OD":
-    st.header("Corridors a enjeux - flux VL par commune / EPCI")
-    st.caption(
+    _page_header(
+        "Corridors à enjeux — flux VL par commune / EPCI",
         "Arcs proportionnels aux flux VL (taille + couleur). "
-        "Flux internes agreges a la commune (zones IRIS regroupees). "
-        "Flux externes agreges a l'EPCI de destination/origine."
+        "Flux internes agrégés à la commune ; flux externes agrégés "
+        "à l'EPCI de destination / origine.",
     )
 
     col_serm, col_typo, col_nb, col_seuil = st.columns([1, 1, 1, 1])
@@ -621,7 +655,11 @@ elif page == "Corridors & top flux OD":
 # =========================================================================
 
 elif page == "Echanges inter-SERM & EPCI":
-    st.header("Echanges entre SERM et entre EPCI")
+    _page_header(
+        "Échanges entre SERM et entre EPCI",
+        "Matrices origin–destination inter-SERM et focus sur les échanges "
+        "EPCI × EPCI au sein d'un territoire.",
+    )
 
     matrice = _matrice(signature)
     st.plotly_chart(heatmap_inter_serm(matrice), use_container_width=True)
@@ -682,15 +720,152 @@ elif page == "Echanges inter-SERM & EPCI":
 
 
 # =========================================================================
-# Page 5 : Contexte enrichi (datagouv)
+# Page 5 : Comptages AVATAR
+# =========================================================================
+
+elif page == "Comptages AVATAR":
+    import geopandas as gpd
+    from shapely.geometry import Point
+
+    _page_header(
+        "Comptages horaires AVATAR — DIR Est & DIR Centre-Est",
+        "Profils temporels horaires moyens (0–23 h) des stations de "
+        "comptage permanentes sur le réseau national en BFC. "
+        "Données : API AVATAR Cerema.",
+    )
+
+    # ── Chargement du bundle AVATAR ──────────────────────────────────────
+    try:
+        stations_all = charger_stations_avatar()
+        profils_all = charger_profils_avatar()
+    except FileNotFoundError as exc:
+        st.warning(
+            f"Bundle AVATAR introuvable : {exc}\n\n"
+            "Lancer d'abord :\n"
+            "```\n"
+            "python scripts/prepare_avatar_stations.py "
+            "--metadonnees sortie_avatar_bfc/metadonnees_stations_bfc.csv "
+            "--horaire sortie_avatar_bfc/horaire_consolide_2026.csv\n"
+            "```"
+        )
+        st.stop()
+
+    # ── Selecteur SERM (identique aux autres pages) ──────────────────────
+    code_serm_av = st.selectbox(
+        "SERM",
+        codes_zones(inclure_hors_serm=False),
+        format_func=lambda c: SERM_INFO[c]["nom"],
+        key="code_serm_avatar",
+    )
+
+    peri_serm_av = perimetres_gdf[
+        perimetres_gdf["code_serm"] == code_serm_av
+    ].copy()
+
+    # Filtrage spatial : stations dans le perimetre du SERM selectionne
+    if not peri_serm_av.empty:
+        union_serm = peri_serm_av.to_crs(4326).union_all()
+        mask_serm = stations_all.apply(
+            lambda r: Point(r["longitude"], r["latitude"]).within(union_serm),
+            axis=1,
+        )
+        stations_serm = stations_all[mask_serm].copy()
+    else:
+        stations_serm = stations_all.copy()
+
+    st.caption(
+        f"{len(stations_serm)} station(s) avec donnees dans ce SERM — "
+        f"cliquer sur un point pour afficher son profil horaire."
+    )
+
+    # ── Etat de la station selectionnee (session state) ──────────────────
+    if "avatar_station_id" not in st.session_state:
+        st.session_state["avatar_station_id"] = None
+
+    # ── Carte des stations ───────────────────────────────────────────────
+    fig_carte_av = carte_stations_avatar(
+        stations_serm,
+        peri_serm_av,
+        style_mapbox=_style_mapbox(),
+        station_id_sel=st.session_state["avatar_station_id"],
+    )
+    ev = st.plotly_chart(
+        fig_carte_av,
+        use_container_width=True,
+        on_select="rerun",
+        key="carte_avatar",
+    )
+
+    # Lecture du clic sur la carte
+    pts = (ev.selection.points if ev and ev.selection else [])
+    if pts:
+        cd = pts[0].get("customdata")
+        if cd and len(cd) >= 1:
+            st.session_state["avatar_station_id"] = int(cd[0])
+
+    # ── Profil horaire de la station selectionnee ─────────────────────────
+    station_id_av = st.session_state["avatar_station_id"]
+    if station_id_av is not None:
+        # Verifier que la station est bien dans ce SERM
+        if station_id_av not in stations_serm["count_point_id"].values:
+            st.session_state["avatar_station_id"] = None
+        else:
+            st.divider()
+            st.subheader("Profil horaire moyen")
+            fig_profil = profil_horaire_avatar(
+                profils_all, station_id_av, stations_serm
+            )
+            st.plotly_chart(fig_profil, use_container_width=True)
+
+            # Tableau de donnees brutes
+            with st.expander("Donnees brutes du profil (CSV)"):
+                profil_station = profils_all[
+                    profils_all["count_point_id"] == station_id_av
+                ].sort_values("heure").copy()
+                profil_station["heure"] = profil_station["heure"].apply(
+                    lambda h: f"{int(h):02d}h"
+                )
+                st.dataframe(
+                    profil_station.rename(columns={
+                        "heure": "Heure",
+                        "flow_moy": "Debit moy. (veh/h)",
+                        "pl_pct_moy": "Part PL (%)",
+                        "vitesse_moy": "Vitesse moy. (km/h)",
+                    }).drop(columns=["count_point_id"], errors="ignore"),
+                    use_container_width=True,
+                    hide_index=True,
+                )
+                csv_av = profil_station.to_csv(index=False, sep=";").encode(
+                    "utf-8-sig"
+                )
+                row_st_av = stations_serm[
+                    stations_serm["count_point_id"] == station_id_av
+                ].iloc[0]
+                slug_av = str(
+                    row_st_av.get("count_point_name") or station_id_av
+                ).replace(" ", "_").lower()
+                st.download_button(
+                    ":material/download: Exporter le profil (CSV)",
+                    csv_av,
+                    f"profil_avatar_{slug_av}.csv",
+                    "text/csv",
+                )
+    else:
+        st.info(
+            ":material/touch_app: Cliquer sur une station sur la carte "
+            "pour afficher son profil horaire."
+        )
+
+
+# =========================================================================
+# Page 6 : Contexte enrichi (datagouv)
 # =========================================================================
 
 elif page == "Contexte enrichi (datagouv)":
-    st.header("Contexte enrichi par les donnees data.gouv.fr")
-    st.caption(
-        "Cette page utilise le serveur MCP `user-datagouv` pour rechercher "
-        "des jeux de donnees pertinents (INSEE, gares, parts modales) "
-        "complementaires aux indicateurs OPSAM."
+    _page_header(
+        "Contexte enrichi par les données data.gouv.fr",
+        "Jeux de données complémentaires (INSEE, gares, parts modales) "
+        "via le serveur MCP data.gouv, en appui des indicateurs OPSAM.",
     )
     datagouv_context.afficher_panneau_contexte(perimetres_gdf)
 
@@ -700,9 +875,13 @@ elif page == "Contexte enrichi (datagouv)":
 # =========================================================================
 
 elif page == "Reglages":
-    st.header("Reglages - perimetres SERM et bundle de donnees")
+    _page_header(
+        "Réglages — périmètres SERM et bundle de données",
+        "Mettre à jour les périmètres, régénérer le bundle précalculé "
+        "ou exporter les livrables par SERM.",
+    )
     st.markdown(
-        "Les perimetres SERM peuvent evoluer. Pour mettre a jour la "
+        "Les périmètres SERM peuvent évoluer. Pour mettre à jour la "
         "plateforme :"
     )
     st.markdown(

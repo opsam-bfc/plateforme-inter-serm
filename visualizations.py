@@ -30,17 +30,69 @@ from data_loader import (
 # Palette / utilitaires
 # ---------------------------------------------------------------------------
 
-COULEUR_VL = "#1565C0"
-COULEUR_PL = "#EF6C00"
+COULEUR_VL = "#1A6BB5"
+COULEUR_PL = "#E07010"
 
 ECHELLE_TMJA = "Plasma"
 ECHELLE_PCT_PL = "Reds"
+
+_FONT_CHART = "Source Sans 3, Segoe UI, sans-serif"
+_COULEUR_TEXTE = "#243447"
+_COULEUR_TITRE = "#0E2A47"
+_COULEUR_GRILLE = "#E6EBF1"
+_COULEUR_AXE = "#C5CFDA"
+
+
+def _theme_layout(**extra) -> dict:
+    """Layout Plotly commun (typo, fonds, marges de base)."""
+    base = dict(
+        font=dict(family=_FONT_CHART, color=_COULEUR_TEXTE, size=13),
+        title=dict(
+            font=dict(family=_FONT_CHART, color=_COULEUR_TITRE, size=15),
+            x=0.01,
+            xanchor="left",
+        ),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="#FFFFFF",
+        legend=dict(
+            bgcolor="rgba(255,255,255,0.92)",
+            bordercolor="#D5DCE5",
+            borderwidth=1,
+            font=dict(size=12),
+        ),
+        hoverlabel=dict(
+            bgcolor="white",
+            bordercolor="#D5DCE5",
+            font=dict(family=_FONT_CHART, size=12, color=_COULEUR_TEXTE),
+        ),
+    )
+    base.update(extra)
+    return base
+
+
+def _appliquer_theme_axes(fig: go.Figure) -> go.Figure:
+    """Grilles et axes discrets pour un rendu plus institutionnel."""
+    fig.update_xaxes(
+        gridcolor=_COULEUR_GRILLE,
+        zerolinecolor=_COULEUR_AXE,
+        linecolor=_COULEUR_AXE,
+        tickfont=dict(size=11, color="#5C6B7A"),
+        title_font=dict(size=12, color="#5C6B7A"),
+    )
+    fig.update_yaxes(
+        gridcolor=_COULEUR_GRILLE,
+        zerolinecolor=_COULEUR_AXE,
+        linecolor=_COULEUR_AXE,
+        tickfont=dict(size=11, color="#5C6B7A"),
+        title_font=dict(size=12, color="#5C6B7A"),
+    )
+    return fig
 
 
 def _layout_mapbox(
     style_mapbox: str, hauteur: int = 600, marge: int = 5
 ) -> dict:
-    return dict(
+    return _theme_layout(
         mapbox_style=style_mapbox,
         margin={"r": marge, "t": marge, "l": marge, "b": marge},
         height=hauteur,
@@ -51,6 +103,9 @@ def _layout_mapbox(
             y=1.02,
             xanchor="right",
             x=1,
+            bgcolor="rgba(255,255,255,0.92)",
+            bordercolor="#D5DCE5",
+            borderwidth=1,
         ),
     )
 
@@ -87,7 +142,7 @@ def carte_vue_ensemble(
         center={"lat": 47.2, "lon": 5.0},
         zoom=6.2,
     )
-    fig.update_traces(marker_line_width=2, marker_line_color="#142850")
+    fig.update_traces(marker_line_width=2, marker_line_color="#0E2A47")
 
     if libelle_indicateur:
         fig.update_coloraxes(colorbar_title=libelle_indicateur)
@@ -244,13 +299,15 @@ def carte_trafic_serm(
 
     centre = _centre_geometrique(perimetre_gdf)
     fig.update_layout(
-        mapbox_style=style_mapbox,
-        mapbox_center=centre,
-        mapbox_zoom=8.5,
-        margin={"r": 5, "t": 30, "l": 5, "b": 5},
-        height=620,
-        title=titre,
-        legend_title_text=metrique,
+        **_theme_layout(
+            mapbox_style=style_mapbox,
+            mapbox_center=centre,
+            mapbox_zoom=8.5,
+            margin={"r": 5, "t": 40, "l": 5, "b": 5},
+            height=620,
+            title=titre,
+            legend_title_text=metrique,
+        )
     )
     return fig
 
@@ -301,10 +358,12 @@ def _libelles_sankey_gras(noeuds: list[str]) -> list[str]:
 def _appliquer_style_sankey(fig: go.Figure, titre: str) -> go.Figure:
     """Applique police grasse, taille et halo blanc aux libelles."""
     fig.update_layout(
-        title=titre,
-        height=540,
-        margin={"l": 20, "r": 20, "t": 65, "b": 15},
-        font=dict(**_SANKEY_TEXTFONT),
+        **_theme_layout(
+            title=titre,
+            height=540,
+            margin={"l": 20, "r": 20, "t": 65, "b": 15},
+            font=dict(**_SANKEY_TEXTFONT),
+        )
     )
     fig.update_traces(
         textfont=dict(**_SANKEY_TEXTFONT),
@@ -396,8 +455,12 @@ def donut_vl_pl(repartition: pd.DataFrame, titre: str) -> go.Figure:
         )
     )
     fig.update_layout(
-        title=titre, height=300, margin={"l": 10, "r": 10, "t": 40, "b": 10},
-        showlegend=False,
+        **_theme_layout(
+            title=titre,
+            height=300,
+            margin={"l": 10, "r": 10, "t": 40, "b": 10},
+            showlegend=False,
+        )
     )
     return fig
 
@@ -431,14 +494,16 @@ def barres_distance_vl_pl(
         )
     )
     fig.update_layout(
-        barmode="group",
-        title=f"VKM VL / PL par classe de distance - {flux_choisi}",
-        xaxis_title="Classe de distance",
-        yaxis_title="VKM (km/jour)",
-        height=380,
-        margin={"l": 40, "r": 10, "t": 50, "b": 40},
+        **_theme_layout(
+            barmode="group",
+            title=f"VKM VL / PL par classe de distance - {flux_choisi}",
+            xaxis_title="Classe de distance",
+            yaxis_title="VKM (km/jour)",
+            height=380,
+            margin={"l": 40, "r": 10, "t": 50, "b": 40},
+        )
     )
-    return fig
+    return _appliquer_theme_axes(fig)
 
 
 def barres_distance_par_flux(profil: pd.DataFrame, mode: str = "VL") -> go.Figure:
@@ -457,14 +522,16 @@ def barres_distance_par_flux(profil: pd.DataFrame, mode: str = "VL") -> go.Figur
             )
         )
     fig.update_layout(
-        barmode="stack",
-        title=f"Repartition {mode} par flux et classe de distance",
-        xaxis_title="Classe de distance",
-        yaxis_title="VKM (km/jour)",
-        height=380,
-        margin={"l": 40, "r": 10, "t": 50, "b": 40},
+        **_theme_layout(
+            barmode="stack",
+            title=f"Repartition {mode} par flux et classe de distance",
+            xaxis_title="Classe de distance",
+            yaxis_title="VKM (km/jour)",
+            height=380,
+            margin={"l": 40, "r": 10, "t": 50, "b": 40},
+        )
     )
-    return fig
+    return _appliquer_theme_axes(fig)
 
 
 # ---------------------------------------------------------------------------
@@ -488,13 +555,15 @@ def heatmap_inter_serm(matrice: pd.DataFrame) -> go.Figure:
         )
     )
     fig.update_layout(
-        title="Matrice OD inter-SERM (vehicules legers par jour)",
-        height=420,
-        margin={"l": 40, "r": 10, "t": 50, "b": 40},
-        xaxis_title="Destination",
-        yaxis_title="Origine",
+        **_theme_layout(
+            title="Matrice OD inter-SERM (vehicules legers par jour)",
+            height=420,
+            margin={"l": 40, "r": 10, "t": 50, "b": 40},
+            xaxis_title="Destination",
+            yaxis_title="Origine",
+        )
     )
-    return fig
+    return _appliquer_theme_axes(fig)
 
 
 # ---------------------------------------------------------------------------
@@ -912,15 +981,17 @@ def lignes_de_desir(
 
     zoom = 8.5 if est_interne else 7.2
     fig.update_layout(
-        mapbox_style=style_mapbox,
-        mapbox_center=centre,
-        mapbox_zoom=zoom,
-        margin={"r": 5, "t": 40, "l": 5, "b": 5},
-        height=660,
-        title=(
-            f"Top {len(sous)} flux VL "
-            f"({typologie.replace('_', ' ')}) — {info_serm(code_serm)['nom']}"
-        ),
+        **_theme_layout(
+            mapbox_style=style_mapbox,
+            mapbox_center=centre,
+            mapbox_zoom=zoom,
+            margin={"r": 5, "t": 40, "l": 5, "b": 5},
+            height=660,
+            title=(
+                f"Top {len(sous)} flux VL "
+                f"({typologie.replace('_', ' ')}) — {info_serm(code_serm)['nom']}"
+            ),
+        )
     )
     return fig
 
@@ -946,11 +1017,15 @@ def barres_comparatives_serm(
         )
     )
     fig.update_layout(
-        title=titre, height=340,
-        margin={"l": 40, "r": 10, "t": 50, "b": 40},
-        showlegend=False, yaxis_title=indicateur,
+        **_theme_layout(
+            title=titre,
+            height=340,
+            margin={"l": 40, "r": 10, "t": 50, "b": 40},
+            showlegend=False,
+            yaxis_title=indicateur,
+        )
     )
-    return fig
+    return _appliquer_theme_axes(fig)
 
 
 # ---------------------------------------------------------------------------
@@ -1059,17 +1134,19 @@ def heatmap_epci_x_epci(
         )
 
     fig.update_layout(
-        title=(
-            f"Échanges EPCI × EPCI — {info_serm(code_serm)['nom']}"
-            f" ({typologie})"
-            "<br><sup style='color:#9E9E9E'>"
-            "Cellules grises = flux internes (hors echelle de couleur)"
-            "</sup>"
-        ),
-        xaxis_title="EPCI destination",
-        yaxis_title="EPCI origine",
-        xaxis=dict(tickangle=-40),
-        height=560,
-        margin={"l": 220, "r": 20, "t": 80, "b": 200},
+        **_theme_layout(
+            title=(
+                f"Échanges EPCI × EPCI — {info_serm(code_serm)['nom']}"
+                f" ({typologie})"
+                "<br><sup style='color:#9E9E9E'>"
+                "Cellules grises = flux internes (hors echelle de couleur)"
+                "</sup>"
+            ),
+            xaxis_title="EPCI destination",
+            yaxis_title="EPCI origine",
+            xaxis=dict(tickangle=-40),
+            height=560,
+            margin={"l": 220, "r": 20, "t": 80, "b": 200},
+        )
     )
-    return fig
+    return _appliquer_theme_axes(fig)

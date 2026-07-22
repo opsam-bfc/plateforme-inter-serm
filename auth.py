@@ -76,17 +76,27 @@ def verifier_authentification() -> bool:
         return False
 
     # --- Formulaire de connexion ---
+    try:
+        from config.territoire_loader import cfg as _cfg
+        _cfg_p = _cfg().plateforme
+        _nom = _cfg_p.nom
+        _institution = _cfg_p.institution
+    except Exception:
+        _nom = "Plateforme d'analyse"
+        _institution = "DREAL"
+
     col_g, col_c, col_d = st.columns([1, 2, 1])
     with col_c:
-        try:
-            from config.territoire_loader import cfg as _cfg
-            _titre = f"{_cfg().plateforme.nom} — {_cfg().plateforme.institution}"
-        except Exception:
-            _titre = "Plateforme d'analyse — DREAL"
-        st.markdown(f"## {_titre}")
         st.markdown(
-            "Cette plateforme est reservee aux partenaires autorises. "
-            "Veuillez saisir le mot de passe d'acces."
+            f"<div class='login-shell'>"
+            f"<p class='login-kicker'>{_institution}</p>"
+            f"<h2 class='login-title'>{_nom}</h2>"
+            f"<p class='login-lead'>"
+            f"Accès réservé aux partenaires autorisés. "
+            f"Saisissez le mot de passe pour continuer."
+            f"</p>"
+            f"</div>",
+            unsafe_allow_html=True,
         )
         with st.form("form_connexion", clear_on_submit=True):
             mdp = st.text_input(
@@ -95,7 +105,7 @@ def verifier_authentification() -> bool:
                 placeholder="••••••••",
             )
             soumis = st.form_submit_button(
-                "Se connecter", use_container_width=True
+                "Se connecter", use_container_width=True, type="primary"
             )
 
         if soumis:
