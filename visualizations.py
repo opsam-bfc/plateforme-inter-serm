@@ -189,21 +189,54 @@ def carte_vue_ensemble(
 
 
 # ---------------------------------------------------------------------------
-# Carte trafic par SERM (TMJA / % PL / VL_jour)
+# Carte trafic par SERM (TMJA / VL / flux I-E-T recalés)
 # ---------------------------------------------------------------------------
+
+METRIQUE_LABELS: dict[str, str] = {
+    "TMJA_P": "TMJA tous véhicules (consolidé)",
+    "VL_jour": "Véhicules légers / jour",
+    "PL_jour": "Poids lourds / jour",
+    "TMJA_I": "TMJA interne (recalé TMJA_P)",
+    "TMJA_E": "TMJA échange (recalé TMJA_P)",
+    "TMJA_T": "TMJA transit (recalé TMJA_P)",
+    "PART_I": "Part interne (% du TMJA)",
+    "PART_E": "Part échange (% du TMJA)",
+    "PART_T": "Part transit (% du TMJA)",
+}
+
+# Correspondance métrique volume ↔ part (pour enrichir le survol).
+_PART_ASSOCIEE: dict[str, str] = {
+    "TMJA_I": "PART_I",
+    "TMJA_E": "PART_E",
+    "TMJA_T": "PART_T",
+}
+
+
+def _est_metrique_part(metrique: str) -> bool:
+    """True si la métrique est une part (ratio 0-1)."""
+    return metrique.startswith("PART_")
+
 
 def _coords_lignes(
     gdf_sub,
     metrique: str | None = None,
+    col_valeur: str | None = None,
 ) -> tuple[list, list, list]:
     """Construit les listes lat/lon/texte pour un GeoDataFrame de linestrings.
 
     Utilise le separateur ``None`` entre troncons pour un rendu efficace
     en une seule trace Scattermapbox.
+
+    Parameters
+    ----------
+    col_valeur :
+        Colonne numerique utilisee pour le libelle (peut differer de
+        ``metrique`` si on affiche des parts en %).
     """
     lats: list = []
     lons: list = []
     textes: list = []
+    col_aff = col_valeur or metrique
     for _, row in gdf_sub.iterrows():
         geom = row.geometry
         segments = (
@@ -217,13 +250,29 @@ def _coords_lignes(
             lons.extend(xs)
             lats.append(None)
             lons.append(None)
-            if metrique and metrique in row.index:
-                val = row[metrique]
-                label = (
-                    f"{row.get('CL_ADMIN', '')} | {metrique}: {val:,.0f}"
-                    if pd.notna(val)
-                    else f"{row.get('CL_ADMIN', '')} | pas de comptage"
-                )
+            if metrique and col_aff and col_aff in row.index:
+                val = row[col_aff]
+                if pd.isna(val):
+                    label = f"{row.get('CL_ADMIN', '')} | pas de comptage"
+                elif _est_metrique_part(metrique):
+                    label = (
+                        f"{row.get('CL_ADMIN', '')} | "
+                        f"{METRIQUE_LABELS.get(metrique, metrique)}: "
+                        f"{val:.1f} %"
+                    )
+                else:
+                    label = (
+                        f"{row.get('CL_ADMIN', '')} | "
+                        f"{METRIQUE_LABELS.get(metrique, metrique)}: "
+                        f"{val:,.0f}"
+                    )
+                    part_col = _PART_ASSOCIEE.get(metrique)
+                    if (
+                        part_col
+                        and part_col in row.index
+                        and pd.notna(row[part_col])
+                    ):
+                        label += f" ({100.0 * float(row[part_col]):.1f} %)"
                 textes.extend([label] * len(xs))
             else:
                 textes.extend([""] * len(xs))
@@ -244,8 +293,9 @@ def carte_trafic_serm(
     Departementale). Les troncons sans comptage (TMJA = 0 ou NaN) sont
     traces en gris clair ; les autres sont colores par plage de valeur.
 
-    ``metrique`` parmi : ``TMJA_P`` (tous vehicules, modelise), ``VL_jour``,
-    ``PL_jour`` (= ``PL_P``).
+    ``metrique`` parmi : ``TMJA_P``, ``VL_jour``, ``PL_jour``,
+    ``TMJA_I`` / ``TMJA_E`` / ``TMJA_T`` (recales sur TMJA_P),
+    ``PART_I`` / ``PART_E`` / ``PART_T`` (parts 0-1 du trafic total).
     """
     if metrique not in reseau_gdf.columns:
         raise ValueError(f"Metrique {metrique!r} absente du reseau.")
@@ -253,11 +303,22 @@ def carte_trafic_serm(
     reseau = reseau_gdf.copy()
     reseau[metrique] = reseau[metrique].fillna(0)
 
+    # Les parts sont stockees en ratio 0-1 ; affichage et classes en %.
+    col_valeur = metrique
+    if _est_metrique_part(metrique):
+        col_valeur = "_val_affichee"
+        reseau[col_valeur] = reseau[metrique] * 100.0
+
     if len(reseau) == 0:
         return go.Figure().update_layout(title="Aucun troncon a afficher.")
 
-    # Reds pour PL_jour (volume PL absolu), Plasma pour les autres metriques.
-    palette = "Reds" if metrique == "PL_jour" else "Plasma"
+    # Reds pour PL_jour ; Viridis pour les parts ; Plasma sinon.
+    if metrique == "PL_jour":
+        palette = "Reds"
+    elif _est_metrique_part(metrique):
+        palette = "Viridis"
+    else:
+        palette = "Plasma"
 
     fig = go.Figure()
 
@@ -284,9 +345,11 @@ def carte_trafic_serm(
                 )
 
     # ── Troncons sans comptage : gris clair (fond de reseau) ─────────────────
-    reseau_sans = reseau[reseau[metrique] == 0]
+    reseau_sans = reseau[reseau[col_valeur] == 0]
     if not reseau_sans.empty:
-        lats, lons, textes = _coords_lignes(reseau_sans, metrique)
+        lats, lons, textes = _coords_lignes(
+            reseau_sans, metrique, col_valeur
+        )
         fig.add_trace(
             go.Scattermapbox(
                 lat=lats,
@@ -300,9 +363,9 @@ def carte_trafic_serm(
         )
 
     # ── Troncons avec comptage : colores par plage quantile ──────────────────
-    reseau_avec = reseau[reseau[metrique] > 0].copy()
+    reseau_avec = reseau[reseau[col_valeur] > 0].copy()
     if not reseau_avec.empty:
-        valeurs = reseau_avec[metrique].to_numpy()
+        valeurs = reseau_avec[col_valeur].to_numpy()
         v_max = max(float(valeurs.max()), 1.0)
         reseau_avec["_largeur"] = 1.0 + 5.0 * (valeurs / v_max) ** 0.5
 
@@ -314,27 +377,32 @@ def carte_trafic_serm(
             zip(seuils[:-1], seuils[1:])
         ):
             masque = (
-                (reseau_avec[metrique] >= seuil_bas)
-                & (reseau_avec[metrique] < seuil_haut)
+                (reseau_avec[col_valeur] >= seuil_bas)
+                & (reseau_avec[col_valeur] < seuil_haut)
             )
             if not masque.any():
                 continue
             sub = reseau_avec[masque]
-            lats, lons, textes = _coords_lignes(sub, metrique)
+            lats, lons, textes = _coords_lignes(sub, metrique, col_valeur)
             larg_moy = float(sub["_largeur"].mean())
+            if _est_metrique_part(metrique):
+                nom_classe = f"{seuil_bas:.1f} – {seuil_haut:.1f} %"
+            else:
+                nom_classe = f"{seuil_bas:,.0f} – {seuil_haut:,.0f}"
             fig.add_trace(
                 go.Scattermapbox(
                     lat=lats,
                     lon=lons,
                     mode="lines",
                     line=dict(width=larg_moy, color=couleurs[i]),
-                    name=f"{seuil_bas:,.0f} – {seuil_haut:,.0f}",
+                    name=nom_classe,
                     hoverinfo="text",
                     hovertext=textes,
                 )
             )
 
     centre = _centre_geometrique(perimetre_gdf)
+    libelle = METRIQUE_LABELS.get(metrique, metrique)
     fig.update_layout(
         **_theme_layout(
             mapbox_style=style_mapbox,
@@ -342,8 +410,8 @@ def carte_trafic_serm(
             mapbox_zoom=8.5,
             margin={"r": 5, "t": 40, "l": 5, "b": 5},
             height=620,
-            title=titre,
-            legend_title_text=metrique,
+            title=titre or libelle,
+            legend_title_text=libelle,
         )
     )
     return fig

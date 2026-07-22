@@ -97,6 +97,9 @@ chemins:
   opsam_outputs: '\\poste-2-170\OPSAM_v3\OPSAM\Outputs\Ref2024'
   # Dossier Base du modèle OPSAM (reseau_detaille_linkshape_{scenario}.shp)
   opsam_base: '\\poste-2-170\OPSAM_v3\OPSAM\Base\Ref2024'
+  # Réseau affecté SERM (true shape) — source privilégiée pour les cartes
+  # I/E/T (VOLUME + VOL_M1/M2_* déjà présents). Surcharge : SERM_RESEAU_SHP.
+  reseau_shp: '\\nas-bfc\COMMUN\21_MOBILITE\21.4_PROJETS\DREAL\2026_SERM\4_OUTPUT\DATA\reseau_affecte_ref2024_serm\reseau_final_Ref2024_serm_true_shape.shp'
   # Fichier lookup commune / EPCI / macrozone
   lookup_csv: '\\nas-bfc\COMMUN\21_MOBILITE\21.2_COMMUN\DATA\lookup_dep_com_epci_macrozone.csv'
   # Shapefile des zones OPSAM (polygones)
