@@ -2,16 +2,16 @@ serm_O;serm_O_nom;serm_D;serm_D_nom;volume
 0;Reste BFC;0;Reste BFC;1334107.0
 0;Reste BFC;1;SERM Dijonnais;77417.69
 0;Reste BFC;2;SERM Nord Franche-Comte;53301.55
-0;Reste BFC;3;SERM Bisontain;51220.14
+0;Reste BFC;3;SERM Bisontin;51220.14
 1;SERM Dijonnais;0;Reste BFC;77723.13
 1;SERM Dijonnais;1;SERM Dijonnais;414323.26
 1;SERM Dijonnais;2;SERM Nord Franche-Comte;239.32
-1;SERM Dijonnais;3;SERM Bisontain;15091.43
+1;SERM Dijonnais;3;SERM Bisontin;15091.43
 2;SERM Nord Franche-Comte;0;Reste BFC;53236.81
 2;SERM Nord Franche-Comte;1;SERM Dijonnais;235.28
 2;SERM Nord Franche-Comte;2;SERM Nord Franche-Comte;146816.37
-2;SERM Nord Franche-Comte;3;SERM Bisontain;7820.8
-3;SERM Bisontain;0;Reste BFC;51130.06
-3;SERM Bisontain;1;SERM Dijonnais;15046.13
-3;SERM Bisontain;2;SERM Nord Franche-Comte;7899.5
-3;SERM Bisontain;3;SERM Bisontain;243325.62
+2;SERM Nord Franche-Comte;3;SERM Bisontin;7820.8
+3;SERM Bisontin;0;Reste BFC;51130.06
+3;SERM Bisontin;1;SERM Dijonnais;15046.13
+3;SERM Bisontin;2;SERM Nord Franche-Comte;7899.5
+3;SERM Bisontin;3;SERM Bisontin;243325.62

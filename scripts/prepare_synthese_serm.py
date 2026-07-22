@@ -46,7 +46,7 @@ SERM_REFERENTIEL: list[dict] = [
     },
     {
         "code_serm": 3,
-        "nom_serm": "SERM Bisontain",
+        "nom_serm": "SERM Bisontin",
         "slug_serm": "besancon",
         "source_macrozonage": "M2",
         "code_macrozone": 3,

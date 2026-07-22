@@ -642,7 +642,7 @@ def _ajouter_polygones_gdf(
     showlegend: bool = False,
     name: str = "",
 ) -> None:
-    """Ajoute les polygones d'un GeoDataFrame en UNE SEULE trace Scattermapbox.
+    """Ajoute les polygones d'un GeoDataFrame en UNE SEULE trace Scattermap.
 
     Toutes les geometries sont concatenees avec des separateurs ``None``
     (meme technique que _coords_lignes pour le reseau routier).
@@ -683,7 +683,7 @@ def _ajouter_polygones_gdf(
         return
 
     fig.add_trace(
-        go.Scattermapbox(
+        go.Scattermap(
             lat=lats_all,
             lon=lons_all,
             mode="lines",
@@ -708,11 +708,14 @@ def _labels_centroides(
 ) -> None:
     """Ajoute des labels texte aux centroides d'un GeoDataFrame.
 
+    Utilise ``Scattermap`` (MapLibre) en ``markers+text`` : le mode ``text``
+    de Scattermapbox est invisible sur les fonds raster (OSM / Carto).
+
     ``libelles`` permet de fournir des textes déjà formatés (ex. noms EPCI
     raccourcis) à la place de ``gdf[col_nom]``.
     """
     centroides = gdf.copy()
-    # Centroides en projection métrique pour rester dans le polygone
+    # Point représentatif en projection métrique pour rester dans le polygone
     try:
         gdf_m = centroides.to_crs(2154)
         pts = gdf_m.geometry.representative_point().to_crs(4326)
@@ -731,19 +734,27 @@ def _labels_centroides(
     centroides = centroides.dropna(subset=["_cx", "_cy", col_txt])
     if centroides.empty:
         return
+
+    textes = centroides[col_txt].astype(str).tolist()
     fig.add_trace(
-        go.Scattermapbox(
+        go.Scattermap(
             lat=centroides["_cy"].tolist(),
             lon=centroides["_cx"].tolist(),
-            mode="text",
-            text=centroides[col_txt].astype(str).tolist(),
+            mode="markers+text",
+            text=textes,
+            textposition="top center",
             textfont=dict(
                 size=taille,
                 color=couleur,
-                family="Source Sans 3, Segoe UI, sans-serif",
+                family="Arial, Helvetica, sans-serif",
             ),
-            textposition="middle center",
-            hoverinfo="skip",
+            marker=dict(
+                size=7,
+                color=couleur,
+                opacity=0.85,
+            ),
+            hovertext=textes,
+            hoverinfo="text",
             showlegend=False,
         )
     )
@@ -765,14 +776,22 @@ def _labels_points_flux(
     )
     if pts.empty:
         return
+    textes = pts[col_nom].astype(str).tolist()
     fig.add_trace(
-        go.Scattermapbox(
+        go.Scattermap(
             lat=pts[col_lat].tolist(),
             lon=pts[col_lon].tolist(),
-            mode="text",
-            text=pts[col_nom].astype(str).tolist(),
-            textfont=dict(size=taille, color=couleur),
-            hoverinfo="skip",
+            mode="markers+text",
+            text=textes,
+            textposition="top center",
+            textfont=dict(
+                size=taille,
+                color=couleur,
+                family="Arial, Helvetica, sans-serif",
+            ),
+            marker=dict(size=6, color=couleur, opacity=0.8),
+            hovertext=textes,
+            hoverinfo="text",
             showlegend=False,
         )
     )
@@ -855,15 +874,9 @@ def lignes_de_desir(
             libelles_epci = [
                 _libelle_epci_lisible(n) for n in epci_serm["NOM"].tolist()
             ]
-            # Halo clair puis texte foncé pour une meilleure lisibilité
             _labels_centroides(
                 fig, epci_serm, "NOM",
-                taille=13, couleur="#FFFFFF",
-                libelles=libelles_epci,
-            )
-            _labels_centroides(
-                fig, epci_serm, "NOM",
-                taille=12, couleur="#0E2A47",
+                taille=13, couleur="#0E2A47",
                 libelles=libelles_epci,
             )
 
@@ -959,12 +972,7 @@ def lignes_de_desir(
                 ]
                 _labels_centroides(
                     fig, epci_sous, "NOM",
-                    taille=12, couleur="#FFFFFF",
-                    libelles=libelles_ext,
-                )
-                _labels_centroides(
-                    fig, epci_sous, "NOM",
-                    taille=11, couleur="#BF360C",
+                    taille=12, couleur="#BF360C",
                     libelles=libelles_ext,
                 )
 
@@ -1007,7 +1015,7 @@ def lignes_de_desir(
                     lats += list(yi) + [None]
                     lons += list(xi) + [None]
                 fig.add_trace(
-                    go.Scattermapbox(
+                    go.Scattermap(
                         lat=lats, lon=lons,
                         mode="lines",
                         line=dict(width=3.0, color=couleur_serm),
@@ -1038,7 +1046,7 @@ def lignes_de_desir(
         ).replace(",", "\u202f")
 
         fig.add_trace(
-            go.Scattermapbox(
+            go.Scattermap(
                 lat=arc_lats, lon=arc_lons,
                 mode="lines",
                 line=dict(width=largeur, color=couleur),
@@ -1061,7 +1069,7 @@ def lignes_de_desir(
         noms = pts[col_nom].fillna("?").tolist()
         tailles = [6 + 5 * float(vn) ** 0.5 for vn in v_pts_norm]
         fig.add_trace(
-            go.Scattermapbox(
+            go.Scattermap(
                 lat=pts[col_lat].tolist(), lon=pts[col_lon].tolist(),
                 mode="markers",
                 marker=dict(size=tailles, color=couleurs_pts),
@@ -1083,11 +1091,13 @@ def lignes_de_desir(
         }
 
     zoom = 8.5 if est_interne else 7.2
+    # Scattermap (MapLibre) : map_style / map_center / map_zoom
+    # (le mode text de Scattermapbox est invisible sur OSM / Carto).
     fig.update_layout(
         **_theme_layout(
-            mapbox_style=style_mapbox,
-            mapbox_center=centre,
-            mapbox_zoom=zoom,
+            map_style=style_mapbox,
+            map_center=centre,
+            map_zoom=zoom,
             margin={"r": 5, "t": 40, "l": 5, "b": 5},
             height=660,
             title=(

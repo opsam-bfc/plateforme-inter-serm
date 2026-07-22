@@ -282,7 +282,7 @@ NOMS_SERM = {
     0: "Reste BFC",
     1: "SERM Dijonnais",
     2: "SERM Nord Franche-Comte",
-    3: "SERM Bisontain",
+    3: "SERM Bisontin",
 }
 
 
