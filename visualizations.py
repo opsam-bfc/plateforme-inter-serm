@@ -766,41 +766,39 @@ def _points_labels_gdf(
     )
 
 
-def _layer_labels_symbol(
+def _ajouter_labels_epci(
+    fig: go.Figure,
     lons: list[float],
     lats: list[float],
     textes: list[str],
     couleur: str = "#0E2A47",
-    taille: int = 13,
-) -> dict:
-    """Couche MapLibre symbol (texte) — fiable dès que le style a des glyphs."""
-    features = []
-    for lon, lat, txt in zip(lons, lats, textes):
-        features.append(
-            {
-                "type": "Feature",
-                "geometry": {
-                    "type": "Point",
-                    "coordinates": [float(lon), float(lat)],
-                },
-                "properties": {"name": str(txt)},
-            }
+    taille: int = 14,
+) -> None:
+    """Ajoute les noms d'EPCI en texte seul (sans marqueur).
+
+    Requiert le style ``_style_carte_avec_labels()`` (glyphs MapLibre).
+    """
+    if not textes:
+        return
+    # Halo blanc puis libellé principal — pas de points.
+    for taille_h, couleur_h in ((taille + 2, "#FFFFFF"), (taille, couleur)):
+        fig.add_trace(
+            go.Scattermap(
+                lat=lats,
+                lon=lons,
+                mode="text",
+                text=textes,
+                textposition="middle center",
+                textfont=dict(
+                    size=taille_h,
+                    color=couleur_h,
+                    family=_FONT_CARTE_BOLD,
+                ),
+                hovertext=textes if couleur_h != "#FFFFFF" else None,
+                hoverinfo="text" if couleur_h != "#FFFFFF" else "skip",
+                showlegend=False,
+            )
         )
-    return {
-        "sourcetype": "geojson",
-        "source": {"type": "FeatureCollection", "features": features},
-        "type": "symbol",
-        "below": "",
-        "symbol": {
-            "text": "name",
-            "textfont": {
-                "size": taille,
-                "color": couleur,
-                "family": _FONT_CARTE_BOLD,
-            },
-            "textposition": "middle center",
-        },
-    }
 
 
 def _labels_centroides(
@@ -932,7 +930,6 @@ def lignes_de_desir(
     est_echange = (typologie in ("echange_emis", "echange_recus"))
 
     fig = go.Figure()
-    layers_labels: list[dict] = []
 
     # -- Couche 0 : contours + noms des EPCI du SERM -------------------------
     epci_serm = None
@@ -957,13 +954,10 @@ def lignes_de_desir(
             lons_e, lats_e, txts_e = _points_labels_gdf(
                 epci_serm, "NOM", libelles_epci
             )
-            if txts_e:
-                layers_labels.append(
-                    _layer_labels_symbol(
-                        lons_e, lats_e, txts_e,
-                        couleur="#0E2A47", taille=14,
-                    )
-                )
+            _ajouter_labels_epci(
+                fig, lons_e, lats_e, txts_e,
+                couleur="#0E2A47", taille=14,
+            )
 
     # -- Couche 1 : limites communales (flux internes) -----------------------
     if est_interne and communes_gdf is not None:
@@ -1058,13 +1052,10 @@ def lignes_de_desir(
                 lons_x, lats_x, txts_x = _points_labels_gdf(
                     epci_sous, "NOM", libelles_ext
                 )
-                if txts_x:
-                    layers_labels.append(
-                        _layer_labels_symbol(
-                            lons_x, lats_x, txts_x,
-                            couleur="#BF360C", taille=13,
-                        )
-                    )
+                _ajouter_labels_epci(
+                    fig, lons_x, lats_x, txts_x,
+                    couleur="#BF360C", taille=13,
+                )
 
         # Labels aux extremites des flux (noms, pas codes)
         if typologie == "echange_emis":
@@ -1145,28 +1136,8 @@ def lignes_de_desir(
             )
         )
 
-    # -- Couche 5 : marqueurs origine / destination --------------------------
-    for col_lon, col_lat, col_nom in (
-        ("lon_O", "lat_O", col_nom_O),
-        ("lon_D", "lat_D", col_nom_D),
-    ):
-        pts = sous.dropna(subset=[col_lon, col_lat]).copy()
-        pts = pts.drop_duplicates(subset=[col_lon, col_lat])
-        if pts.empty:
-            continue
-        v_pts_norm = pts["volume"].values / v_max
-        couleurs_pts = [_couleur_depuis_volume(vn) for vn in v_pts_norm]
-        noms = pts[col_nom].fillna("?").tolist()
-        tailles = [6 + 5 * float(vn) ** 0.5 for vn in v_pts_norm]
-        fig.add_trace(
-            go.Scattermap(
-                lat=pts[col_lat].tolist(), lon=pts[col_lon].tolist(),
-                mode="markers",
-                marker=dict(size=tailles, color=couleurs_pts),
-                hovertext=noms, hoverinfo="text",
-                showlegend=False,
-            )
-        )
+    # (Pas de marqueurs ponctuels origine/destination : les arcs + noms EPCI
+    # suffisent pour la lecture ; les points masquaient les libellés.)
 
     # -- Centrage carte -------------------------------------------------------
     if perimetres_gdf is not None:
@@ -1181,13 +1152,12 @@ def lignes_de_desir(
         }
 
     zoom = 8.5 if est_interne else 7.2
-    # Style custom avec glyphs MapLibre + couches symbol pour les noms EPCI.
+    # Style custom avec glyphs MapLibre : indispensable pour voir les noms.
     fig.update_layout(
         **_theme_layout(
             map_style=_style_carte_avec_labels(),
             map_center=centre,
             map_zoom=zoom,
-            map_layers=layers_labels,
             margin={"r": 5, "t": 40, "l": 5, "b": 5},
             height=660,
             title=(
