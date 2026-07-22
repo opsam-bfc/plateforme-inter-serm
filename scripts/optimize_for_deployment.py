@@ -37,7 +37,21 @@ LOG = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 # Colonnes conservees dans les GPKG reseau (tout le reste est supprime).
-COLONNES_RESEAU = ["CL_ADMIN", "TMJA_P", "PL_jour", "VL_jour", "geometry"]
+# TMJA_I/E/T : volumes I/E/T recalés sur TMJA_P (via VOL_Mn_X / VOLUME).
+# PART_I/E/T : part de chaque composante dans le trafic total (0-1).
+COLONNES_RESEAU = [
+    "CL_ADMIN",
+    "TMJA_P",
+    "PL_jour",
+    "VL_jour",
+    "TMJA_I",
+    "TMJA_E",
+    "TMJA_T",
+    "PART_I",
+    "PART_E",
+    "PART_T",
+    "geometry",
+]
 
 # Fichiers GeoJSON a simplifier (relatifs a data_dir).
 # La liste des limites_communes_serm{N}.geojson est construite dynamiquement

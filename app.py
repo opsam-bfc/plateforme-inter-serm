@@ -57,6 +57,7 @@ from data_loader import (  # noqa: E402
     signature_bundle,
 )
 from visualizations import (  # noqa: E402
+    METRIQUE_LABELS,
     barres_comparatives_serm,
     barres_distance_par_flux,
     barres_distance_vl_pl,
@@ -151,7 +152,7 @@ def _reseau(slug: str, signature: float):
     return charger_reseau_serm(slug)
 
 
-@st.cache_data(show_spinner="Generation de la carte reseau...", max_entries=6)
+@st.cache_data(show_spinner="Generation de la carte reseau...", max_entries=24)
 def _carte_trafic(
     code_serm: int,
     metrique: str,
@@ -161,16 +162,17 @@ def _carte_trafic(
     """Cache la figure Plotly de la carte trafic (couteuse a generer).
 
     Le cache est invalide quand signature ou metrique change.
-    max_entries=6 : 3 SERM x 2 metriques.
+    max_entries=24 : 3 SERM x ~8 metriques.
     """
     del signature
     inf = SERM_INFO[code_serm]
     reseau = charger_reseau_serm(inf["slug"])
     perimetres = charger_perimetres_serm()
     peri = perimetres[perimetres["code_serm"] == code_serm]
+    libelle = METRIQUE_LABELS.get(metrique, metrique)
     return carte_trafic_serm(
         reseau, peri, metrique, style_mapbox,
-        titre=f"{inf['nom']} — {metrique}",
+        titre=f"{inf['nom']} — {libelle}",
     )
 
 
@@ -474,15 +476,36 @@ elif page == "Socle par SERM":
     st.divider()
 
     st.subheader("Carte de trafic sur le reseau du SERM")
+    st.caption(
+        "Les couches Interne / Échange / Transit sont recalées sur le TMJA "
+        "consolidé (`TMJA_P`) via le ratio `VOL_Mn_X / VOLUME` issu de "
+        "l'affectation OPSAM (M1 pour Dijon et NFC, M2 pour Besançon)."
+    )
+    # Indicateurs disponibles selon les colonnes presentes dans le bundle.
+    indicateurs_base = ["VL_jour", "TMJA_P"]
+    indicateurs_iet = [
+        "TMJA_I", "TMJA_E", "TMJA_T",
+        "PART_I", "PART_E", "PART_T",
+    ]
+    try:
+        _cols_reseau = set(charger_reseau_serm(info["slug"]).columns)
+    except Exception:
+        _cols_reseau = set()
+    indicateurs_carte = indicateurs_base + [
+        c for c in indicateurs_iet if c in _cols_reseau
+    ]
+    if not any(c in _cols_reseau for c in indicateurs_iet):
+        st.info(
+            "Les couches I/E/T ne sont pas encore dans le bundle réseau. "
+            "Lancer `scripts/prepare_reseau_serm.py` puis "
+            "`scripts/optimize_for_deployment.py`."
+        )
     col_sel_carte, _ = st.columns([1, 3])
     with col_sel_carte:
         metrique_carte = st.selectbox(
             "Indicateur",
-            ["VL_jour", "TMJA_P"],
-            format_func=lambda x: {
-                "TMJA_P": "TMJA tous vehicules (modelise)",
-                "VL_jour": "Vehicules Legers / jour",
-            }[x],
+            indicateurs_carte,
+            format_func=lambda x: METRIQUE_LABELS.get(x, x),
         )
     try:
         fig_carte_serm = _carte_trafic(

@@ -106,6 +106,7 @@ class CheminsConfig:
     zonage_shp: str
     epci_shp: str
     matrice_vl_csv: str
+    reseau_shp: str = ""
 
 
 @dataclass(frozen=True)
@@ -214,6 +215,7 @@ def charger_config(chemin: Optional[str] = None) -> TerritoireConfig:
         zonage_shp=ch.get("zonage_shp", ""),
         epci_shp=ch.get("epci_shp", ""),
         matrice_vl_csv=ch.get("matrice_vl_csv", ""),
+        reseau_shp=ch.get("reseau_shp", ""),
     )
 
     return TerritoireConfig(
