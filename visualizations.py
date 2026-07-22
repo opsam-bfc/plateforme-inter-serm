@@ -611,6 +611,28 @@ def _couleur_depuis_volume(v_norm: float, palette: str = "YlOrRd") -> str:
     return f"#{r:02x}{g:02x}{b:02x}"
 
 
+def _libelle_epci_lisible(nom: str, max_len: int = 36) -> str:
+    """Raccourcit un nom d'EPCI pour un affichage carte lisible."""
+    import re
+
+    s = " ".join(str(nom or "").split())
+    if not s:
+        return ""
+    s = re.sub(
+        r"^Communauté\s+(d['’]agglomération|de\s+communes|urbaine)\s+",
+        "",
+        s,
+        flags=re.IGNORECASE,
+    )
+    s = re.sub(r"^(CA|CC|CU|Métropole)\s+", "", s, flags=re.IGNORECASE)
+    s = re.sub(r"^de\s+", "", s, flags=re.IGNORECASE)
+    if " - " in s and len(s) > max_len:
+        s = s.split(" - ", 1)[0].strip()
+    if len(s) > max_len:
+        s = s[: max_len - 1].rstrip(" ,-") + "…"
+    return s
+
+
 def _ajouter_polygones_gdf(
     fig: go.Figure,
     gdf,
@@ -683,12 +705,31 @@ def _labels_centroides(
     col_nom: str,
     taille: int = 10,
     couleur: str = "#37474F",
+    libelles: list[str] | None = None,
 ) -> None:
-    """Ajoute des labels texte aux centroides d'un GeoDataFrame."""
+    """Ajoute des labels texte aux centroides d'un GeoDataFrame.
+
+    ``libelles`` permet de fournir des textes déjà formatés (ex. noms EPCI
+    raccourcis) à la place de ``gdf[col_nom]``.
+    """
     centroides = gdf.copy()
-    centroides["_cx"] = centroides.geometry.centroid.x
-    centroides["_cy"] = centroides.geometry.centroid.y
-    centroides = centroides.dropna(subset=["_cx", "_cy", col_nom])
+    # Centroides en projection métrique pour rester dans le polygone
+    try:
+        gdf_m = centroides.to_crs(2154)
+        pts = gdf_m.geometry.representative_point().to_crs(4326)
+        centroides["_cx"] = pts.x
+        centroides["_cy"] = pts.y
+    except Exception:
+        centroides["_cx"] = centroides.geometry.centroid.x
+        centroides["_cy"] = centroides.geometry.centroid.y
+
+    if libelles is not None:
+        centroides = centroides.assign(_label=list(libelles))
+        col_txt = "_label"
+    else:
+        col_txt = col_nom
+
+    centroides = centroides.dropna(subset=["_cx", "_cy", col_txt])
     if centroides.empty:
         return
     fig.add_trace(
@@ -696,8 +737,13 @@ def _labels_centroides(
             lat=centroides["_cy"].tolist(),
             lon=centroides["_cx"].tolist(),
             mode="text",
-            text=centroides[col_nom].tolist(),
-            textfont=dict(size=taille, color=couleur),
+            text=centroides[col_txt].astype(str).tolist(),
+            textfont=dict(
+                size=taille,
+                color=couleur,
+                family="Source Sans 3, Segoe UI, sans-serif",
+            ),
+            textposition="middle center",
             hoverinfo="skip",
             showlegend=False,
         )
@@ -750,8 +796,10 @@ def lignes_de_desir(
     Les flux inférieurs à ``seuil_pct_max`` % du maximum sont supprimés.
 
     Couches géographiques optionnelles :
-    * ``communes_gdf`` : limites communales du SERM (affiché pour flux internes).
-    * ``epci_gdf``     : limites EPCI (affiché pour les échanges EPCI).
+    * ``communes_gdf`` : limites communales du SERM (flux internes).
+    * ``epci_gdf``     : limites EPCI — toujours affichées pour le SERM
+      sélectionné (contours + libellés lisibles) ; les EPCI hors SERM
+      impliqués dans les échanges sont ajoutés en surcouche.
     * ``perimetres_gdf`` : périmètres SERM (toujours affiché si fourni).
 
     ``top_od`` peut provenir de ``top_od_vl_par_serm.parquet`` (zones OPSAM)
@@ -788,16 +836,48 @@ def lignes_de_desir(
 
     fig = go.Figure()
 
+    # -- Couche 0 : contours + noms des EPCI du SERM -------------------------
+    epci_serm = None
+    if epci_gdf is not None and len(epci_gdf) > 0:
+        if "code_serm" in epci_gdf.columns:
+            epci_serm = epci_gdf[epci_gdf["code_serm"] == code_serm].copy()
+        else:
+            epci_serm = epci_gdf.copy()
+        if epci_serm is not None and not epci_serm.empty:
+            _ajouter_polygones_gdf(
+                fig, epci_serm,
+                couleur_ligne="#0E2A47",
+                largeur_ligne=1.8,
+                couleur_remplissage="rgba(14,42,71,0.04)",
+                hover_col="NOM",
+                showlegend=True,
+                name="EPCI",
+            )
+            libelles_epci = [
+                _libelle_epci_lisible(n) for n in epci_serm["NOM"].tolist()
+            ]
+            # Halo clair puis texte foncé pour une meilleure lisibilité
+            _labels_centroides(
+                fig, epci_serm, "NOM",
+                taille=13, couleur="#FFFFFF",
+                libelles=libelles_epci,
+            )
+            _labels_centroides(
+                fig, epci_serm, "NOM",
+                taille=12, couleur="#0E2A47",
+                libelles=libelles_epci,
+            )
+
     # -- Couche 1 : limites communales (flux internes) -----------------------
     if est_interne and communes_gdf is not None:
         _ajouter_polygones_gdf(
             fig, communes_gdf,
-            couleur_ligne="#78909C",
-            largeur_ligne=0.7,
-            couleur_remplissage="rgba(120,144,156,0.05)",
+            couleur_ligne="#90A4AE",
+            largeur_ligne=0.45,
+            couleur_remplissage="rgba(144,164,174,0.03)",
             hover_col="NOM_COM",
         )
-        # Labels communes impliquées dans les flux
+        # Labels communes impliquées (discrets — les EPCI portent le contexte)
         noms_o = set(sous[col_nom_O].dropna().unique())
         noms_d = set(sous[col_nom_D].dropna().unique())
         noms_impliques = noms_o | noms_d
@@ -805,8 +885,10 @@ def lignes_de_desir(
             communes_gdf["NOM_COM"].isin(noms_impliques)
         ]
         if not communes_labels.empty:
-            _labels_centroides(fig, communes_labels, "NOM_COM",
-                               taille=9, couleur="#37474F")
+            _labels_centroides(
+                fig, communes_labels, "NOM_COM",
+                taille=9, couleur="#546E7A",
+            )
 
     # -- Couche 2 : échanges (communes SERM + EPCI externes) -----------------
     if est_echange:
@@ -844,11 +926,21 @@ def lignes_de_desir(
                     sous["com_O"].astype(str).str.replace(r"\.0$", "", regex=True)
                 )
 
-            if codes_epci_impliques:
+            # Exclure les EPCI déjà dessinés (ceux du SERM)
+            codes_serm = set()
+            if epci_serm is not None and not epci_serm.empty:
+                codes_serm = set(
+                    epci_serm["CODE_SIREN"].astype(str).str.replace(
+                        r"\.0$", "", regex=True
+                    )
+                )
+            codes_ext = codes_epci_impliques - codes_serm
+
+            if codes_ext:
                 epci_sous = epci_gdf[
                     epci_gdf["CODE_SIREN"].astype(str).str.replace(
                         r"\.0$", "", regex=True
-                    ).isin(codes_epci_impliques)
+                    ).isin(codes_ext)
                 ]
             else:
                 epci_sous = epci_gdf.iloc[0:0]
@@ -856,13 +948,25 @@ def lignes_de_desir(
             if not epci_sous.empty:
                 _ajouter_polygones_gdf(
                     fig, epci_sous,
-                    couleur_ligne="#F57F17",
-                    largeur_ligne=1.2,
-                    couleur_remplissage="rgba(245,127,23,0.07)",
+                    couleur_ligne="#E07010",
+                    largeur_ligne=1.6,
+                    couleur_remplissage="rgba(224,112,16,0.08)",
                     hover_col="NOM",
+                    showlegend=True,
+                    name="EPCI hors SERM",
+                )
+                libelles_ext = [
+                    _libelle_epci_lisible(n) for n in epci_sous["NOM"].tolist()
+                ]
+                _labels_centroides(
+                    fig, epci_sous, "NOM",
+                    taille=12, couleur="#FFFFFF",
+                    libelles=libelles_ext,
                 )
                 _labels_centroides(
-                    fig, epci_sous, "NOM", taille=10, couleur="#E65100",
+                    fig, epci_sous, "NOM",
+                    taille=11, couleur="#BF360C",
+                    libelles=libelles_ext,
                 )
 
         # Labels aux extremites des flux (noms, pas codes)
