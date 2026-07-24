@@ -91,11 +91,16 @@ def lire_zonage(chemin: Path) -> gpd.GeoDataFrame:
 
 
 def lire_lookup(chemin: Path) -> pd.DataFrame:
-    """Lit le lookup ID_ZONAGE -> M1/M2/COM/EPCI."""
+    """Lit le lookup ID_ZONAGE -> M1/M2/COM/EPCI.
+
+    Accepte un séparateur ``;`` (défaut SERM) ou ``,``.
+    """
     if not chemin.is_file():
         raise FileNotFoundError(f"Lookup introuvable : {chemin}")
     LOG.info("Lecture du lookup macrozone : %s", chemin)
-    df = pd.read_csv(chemin)
+    df = pd.read_csv(chemin, sep=";", dtype=str)
+    if len(df.columns) == 1:
+        df = pd.read_csv(chemin, sep=",", dtype=str)
     df.columns = [str(c).strip() for c in df.columns]
     requis = {"ID_ZONAGE", "M1", "M2"}
     manquantes = requis - set(df.columns)

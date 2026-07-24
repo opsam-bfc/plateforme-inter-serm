@@ -145,12 +145,15 @@ def lire_matrice_od(chemin: Path) -> pd.DataFrame:
 
 
 def lire_lookup(chemin: Path) -> pd.DataFrame:
-    """Lit le lookup ID_ZONAGE -> M1/M2/EPCI/COM."""
+    """Lit le lookup ID_ZONAGE -> M1/M2/EPCI/COM.
+
+    Accepte un séparateur ``;`` (défaut SERM) ou ``,``.
+    """
     if not chemin.is_file():
         raise FileNotFoundError(f"Lookup introuvable : {chemin}")
-    raw = pd.read_csv(chemin, dtype=str, nrows=1)
-    sep = "," if len(raw.columns) >= 5 else ";"
-    df = pd.read_csv(chemin, sep=sep, dtype=str)
+    df = pd.read_csv(chemin, sep=";", dtype=str)
+    if len(df.columns) == 1:
+        df = pd.read_csv(chemin, sep=",", dtype=str)
     df.columns = [str(c).strip() for c in df.columns]
     df["ID_ZONAGE"] = pd.to_numeric(df["ID_ZONAGE"], errors="coerce").astype("Int64")
     df["M1"] = pd.to_numeric(df["M1"], errors="coerce").fillna(0).astype("Int64")

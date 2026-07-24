@@ -88,14 +88,11 @@ def _data_dir() -> Path:
 def lire_lookup(chemin: Path) -> pd.DataFrame:
     """Charge le lookup OPSAM zones -> COM / EPCI / SERM.
 
-    Détecte automatiquement le séparateur (virgule ou point-virgule).
+    Accepte un séparateur ``;`` (défaut SERM) ou ``,``.
     """
-    # Essayer d'abord avec la virgule (séparateur natif du fichier)
-    raw = pd.read_csv(chemin, dtype=str, nrows=1, sep=",")
-    if len(raw.columns) >= 5:
-        df = pd.read_csv(chemin, dtype=str, sep=",")
-    else:
-        df = pd.read_csv(chemin, dtype=str, sep=";")
+    df = pd.read_csv(chemin, sep=";", dtype=str)
+    if len(df.columns) == 1:
+        df = pd.read_csv(chemin, sep=",", dtype=str)
     df.columns = [c.strip() for c in df.columns]
     for col in ("M1", "M2"):
         if col in df.columns:
