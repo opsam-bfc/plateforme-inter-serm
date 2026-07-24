@@ -1,10 +1,12 @@
 """prepare_perimetres_serm.py.
 
 Construit les perimetres geographiques des trois SERM (Dijon, Nord
-Franche-Comte, Besancon) a partir du shapefile des zones OPSAM, en
-priorisant la jointure par le lookup ``M1``/``M2`` (logique des
-calculs OPSAM), avec un repli sur les colonnes ``SERM_*`` du
-shapefile si le lookup n'est pas accessible.
+Franche-Comte, Besancon) a partir du shapefile des zones OPSAM, via
+la jointure lookup ``M1``/``M2`` (logique des calculs OPSAM).
+
+Le lookup M1/M2 est requis : utiliser le fichier SERM dedie (pas une
+version ou ``M2`` est constant / quasi-constant, qui gonfle les
+perimetres).
 
 Le geojson de sortie est reprojete en WGS84 (EPSG:4326), simplifie
 et allege pour rester utilisable dans une application Streamlit.
@@ -111,8 +113,32 @@ def lire_lookup(chemin: Path) -> pd.DataFrame:
     df["ID_ZONAGE"] = pd.to_numeric(df["ID_ZONAGE"], errors="coerce").astype("Int64")
     df["M1"] = pd.to_numeric(df["M1"], errors="coerce").astype("Int64")
     df["M2"] = pd.to_numeric(df["M2"], errors="coerce").astype("Int64")
+    _avertir_si_m2_degenere(df)
     return df
 
+def _avertir_si_m2_degenere(df: pd.DataFrame) -> None:
+    """WARNING si une seule valeur M2 non nulle couvre >95 % des lignes.
+
+    Un lookup corrompu (ex. M2=3 partout) gonfle le perimetre Bisontin
+    a des centaines de milliers de km2. Ne modifie pas les donnees.
+    """
+    m2 = df["M2"].dropna()
+    if m2.empty or len(df) == 0:
+        return
+    non_nuls = m2[m2 != 0]
+    if non_nuls.empty:
+        return
+    top_val = non_nuls.value_counts().index[0]
+    part = float((m2 == top_val).sum()) / float(len(df))
+    if part > 0.95:
+        LOG.warning(
+            "Lookup M2 probablement corrompu : valeur %s presente sur "
+            "%.1f %% des lignes (>95 %%). Utiliser le lookup SERM "
+            "(ex. lookup_dep_com_epci_macrozone_serm_v1.csv), pas une "
+            "version ou M2 est constant.",
+            int(top_val),
+            100.0 * part,
+        )
 
 # ---------------------------------------------------------------------------
 # Construction du code SERM par zone
