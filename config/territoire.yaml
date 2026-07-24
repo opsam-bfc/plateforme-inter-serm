@@ -101,6 +101,9 @@ chemins:
   # I/E/T (VOLUME + VOL_M1/M2_* déjà présents). Surcharge : SERM_RESEAU_SHP.
   reseau_shp: '\\nas-bfc\COMMUN\21_MOBILITE\21.4_PROJETS\DREAL\2026_SERM\4_OUTPUT\DATA\reseau_affecte_ref2024_serm\reseau_final_Ref2024_serm_true_shape.shp'
   # Fichier lookup commune / EPCI / macrozone
+  # IMPORTANT : ce lookup (hors depot git) inclut la CC Arbois-Poligny-Salins
+  # (EPCI 200071595) en M2=3 (SERM Bisontin). Ne pas ecraser avec une
+  # version anterieure sans cette affectation.
   lookup_csv: '\\nas-bfc\COMMUN\21_MOBILITE\21.4_PROJETS\DREAL\2026_SERM\2_INPUT\DATA\lookupfile_serm\lookup_dep_com_epci_macrozone.csv'
   # Shapefile des zones OPSAM (polygones)
   zonage_shp: '\\nas-bfc\COMMUN\21_MOBILITE\21.2_COMMUN\DATA\ZONAGE_OPSAM\zonage_OPSAM_poly.shp'
