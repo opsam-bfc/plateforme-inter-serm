@@ -290,29 +290,45 @@ with st.sidebar:
     st.divider()
 
     # --- Sélecteur de scénario OPSAM -----------------------------------------
+    # Ne proposer que les scénarios dont le bundle data/{id}/ est déployé.
+    # Les scénarios déclarés sans bundle (ex. sc2033 en attente NAS) restent
+    # visibles en légende, sans provoquer d'écran d'erreur.
     _scenarios_cfg = {sc.id: sc for sc in scenarios()}
     _bundles_ok = scenarios_avec_bundle()
-    _ids_ui = list(_scenarios_cfg.keys()) or ["Ref2024"]
+    _ids_disponibles = [
+        sid for sid in _scenarios_cfg if sid in _bundles_ok
+    ] or list(_bundles_ok) or ["Ref2024"]
+    _ids_absents = [
+        sid for sid in _scenarios_cfg if sid not in _bundles_ok
+    ]
+
+    if not bundle_complet(scenario_actif()) and _ids_disponibles:
+        definir_scenario(_ids_disponibles[0])
+        st.session_state["select_scenario_opsam"] = _ids_disponibles[0]
+        st.cache_data.clear()
+        st.rerun()
+
     _defaut = scenario_actif()
-    if _defaut not in _ids_ui:
-        _defaut = _ids_ui[0]
-    _idx = _ids_ui.index(_defaut) if _defaut in _ids_ui else 0
+    if _defaut not in _ids_disponibles:
+        _defaut = _ids_disponibles[0]
+    if st.session_state.get("select_scenario_opsam") not in _ids_disponibles:
+        st.session_state["select_scenario_opsam"] = _defaut
+    _idx = _ids_disponibles.index(_defaut)
 
     def _libelle_scenario(sid: str) -> str:
         sc = _scenarios_cfg.get(sid)
-        base = sc.libelle if sc else sid
-        return base if sid in _bundles_ok else f"{base} — bundle absent"
+        return sc.libelle if sc else sid
 
     choix_scenario = st.selectbox(
         "Scénario OPSAM",
-        _ids_ui,
+        _ids_disponibles,
         index=_idx,
         format_func=_libelle_scenario,
         help=(
             "Chaque scénario lit son bundle sous data/{id}/. "
-            "Générer sc2033 via : "
+            "Générer un scénario manquant : "
             "python scripts/rebuild_for_new_perimeter.py "
-            "--scenario sc2033 --data-dir data/sc2033"
+            "--scenario <id> --data-dir data/<id>"
         ),
         key="select_scenario_opsam",
     )
@@ -321,11 +337,15 @@ with st.sidebar:
         st.cache_data.clear()
         st.rerun()
 
-    if not bundle_complet(choix_scenario):
-        st.warning(
-            f"Bundle **{choix_scenario}** introuvable ou incomplet "
-            f"(attendu : `data/{choix_scenario}/synthese_serm_vl_pl.csv`). "
-            "Générez-le depuis une machine avec accès NAS OPSAM."
+    if _ids_absents:
+        _lib_abs = ", ".join(
+            (_scenarios_cfg[s].libelle if s in _scenarios_cfg else s)
+            for s in _ids_absents
+        )
+        st.caption(
+            f"Non déployés (bundle absent) : {_lib_abs}. "
+            "Rebuild depuis une machine avec accès NAS OPSAM "
+            "(page Réglages)."
         )
 
     st.caption(f"Scénario actif : **{scenario_actif()}**")
@@ -379,11 +399,15 @@ with st.sidebar:
 # ---------------------------------------------------------------------------
 
 if not bundle_complet(scenario_actif()):
+    _ok = scenarios_avec_bundle()
+    if _ok:
+        definir_scenario(_ok[0])
+        st.cache_data.clear()
+        st.rerun()
     st.error(
-        f"Impossible de charger le scénario **{scenario_actif()}** : "
-        f"bundle absent (`data/{scenario_actif()}/`). "
-        "Choisissez un autre scénario ou générez le bundle "
-        "(voir page Réglages)."
+        f"Aucun bundle OPSAM disponible sous `data/`. "
+        f"Scénario attendu : **{scenario_actif()}**. "
+        "Générez un bundle (voir page Réglages)."
     )
     st.stop()
 
