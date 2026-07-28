@@ -75,14 +75,95 @@ TYPES_VOIE_LABELS = {
 # ---------------------------------------------------------------------------
 
 _ROOT = Path(__file__).resolve().parent
+_CLE_SCENARIO_ENV = "SERM_SCENARIO"
+_DOSSIERS_EXCLUS = {"avatar"}
+
+
+def data_root() -> Path:
+    """Racine ``data/`` (contient les sous-dossiers de scénario + avatar)."""
+    return _ROOT / "data"
+
+
+def avatar_dir() -> Path:
+    """Dossier AVATAR partagé (indépendant du scénario OPSAM)."""
+    return data_root() / "avatar"
+
+
+def scenario_actif() -> str:
+    """Identifiant du scénario OPSAM actif (env ``SERM_SCENARIO`` ou config)."""
+    env = (os.environ.get(_CLE_SCENARIO_ENV) or "").strip()
+    if env:
+        return env
+    try:
+        from config.territoire_loader import scenario_defaut
+        return scenario_defaut()
+    except Exception:
+        return "Ref2024"
+
+
+def definir_scenario(scenario_id: str) -> None:
+    """Fixe le scénario actif pour le process (et les chargeurs)."""
+    os.environ[_CLE_SCENARIO_ENV] = str(scenario_id).strip()
+
+
+def scenarios_avec_bundle() -> list[str]:
+    """Scénarios dont le bundle est présent (fichier synthese détecté)."""
+    root = data_root()
+    trouves: list[str] = []
+    if root.is_dir():
+        for p in sorted(root.iterdir()):
+            if (
+                p.is_dir()
+                and p.name not in _DOSSIERS_EXCLUS
+                and not p.name.startswith(".")
+                and (p / "synthese_serm_vl_pl.csv").is_file()
+            ):
+                trouves.append(p.name)
+    # Rétrocompat layout plat data/synthese_*.csv
+    if not trouves and (root / "synthese_serm_vl_pl.csv").is_file():
+        try:
+            from config.territoire_loader import scenario_defaut
+            trouves = [scenario_defaut()]
+        except Exception:
+            trouves = ["Ref2024"]
+    return trouves
+
+
+def bundle_complet(scenario_id: str | None = None) -> bool:
+    """True si le bundle du scénario contient la synthèse SERM."""
+    sid = scenario_id or scenario_actif()
+    return (data_root() / sid / "synthese_serm_vl_pl.csv").is_file() or (
+        sid == scenario_actif()
+        and (data_root() / "synthese_serm_vl_pl.csv").is_file()
+    )
 
 
 def data_dir() -> Path:
-    """Retourne le dossier ``data/`` actif."""
-    v = os.environ.get("SERM_DATA_DIR")
+    """Retourne le dossier bundle du scénario actif.
+
+    Ordre de résolution :
+    1. ``SERM_DATA_DIR`` (surcharge absolue) ;
+    2. ``data/{SERM_SCENARIO|défaut}/`` s'il existe ;
+    3. ``data/`` plat (rétrocompatibilité).
+    """
+    v = (os.environ.get("SERM_DATA_DIR") or "").strip()
     if v:
         return Path(v)
-    return _ROOT / "data"
+
+    root = data_root()
+    scenario = scenario_actif()
+    candidate = root / scenario
+    if candidate.is_dir() and (
+        (candidate / "synthese_serm_vl_pl.csv").is_file()
+        or any(candidate.iterdir())
+    ):
+        return candidate
+
+    # Layout historique (fichiers à la racine de data/)
+    if (root / "synthese_serm_vl_pl.csv").is_file():
+        return root
+
+    return candidate
 
 
 def fichier_data(nom: str) -> Path:
@@ -90,14 +171,19 @@ def fichier_data(nom: str) -> Path:
 
 
 def signature_bundle() -> float:
-    """Somme des mtime des fichiers du bundle (pour invalider les caches)."""
+    """Somme des mtime du bundle scénario + avatar (invalidation caches)."""
     total = 0.0
-    for p in data_dir().rglob("*"):
-        if p.is_file():
-            try:
-                total += p.stat().st_mtime
-            except OSError:
-                pass
+    for base in (data_dir(), avatar_dir()):
+        if not base.exists():
+            continue
+        for p in base.rglob("*"):
+            if p.is_file():
+                try:
+                    total += p.stat().st_mtime
+                except OSError:
+                    pass
+    # Inclure l'id de scénario pour forcer un refresh au changement
+    total += sum(ord(c) for c in scenario_actif()) * 0.001
     return total
 
 
@@ -453,7 +539,7 @@ def charger_stations_avatar() -> pd.DataFrame:
     Raises:
         FileNotFoundError: Si le fichier de metadonnees est absent.
     """
-    chemin = fichier_data("avatar/metadonnees_stations_bfc.csv")
+    chemin = avatar_dir() / "metadonnees_stations_bfc.csv"
     if not chemin.is_file():
         raise FileNotFoundError(
             f"Fichier introuvable : {chemin}. "
@@ -493,7 +579,7 @@ def charger_profils_avatar() -> pd.DataFrame:
     Raises:
         FileNotFoundError: Si le fichier CSV n'a pas encore ete genere.
     """
-    chemin = fichier_data("avatar/moyenne_horaire_consolide_2026.csv")
+    chemin = avatar_dir() / "moyenne_horaire_consolide_2026.csv"
     if not chemin.is_file():
         raise FileNotFoundError(
             f"Fichier introuvable : {chemin}. "

@@ -48,7 +48,7 @@ from data_loader import (  # noqa: E402
 
 LOG = logging.getLogger("export_livrables")
 
-SCENARIO = "Ref2024"
+SCENARIO = os.environ.get("SERM_SCENARIO", "Ref2024")
 SOURCES_OPSAM = (
     "Scenario OPSAM : Ref2024\n"
     "Synthese macrozones : synthese_m1_Ref2024.csv, synthese_m2_Ref2024.csv\n"
@@ -511,6 +511,7 @@ def _zipper(racine_out: Path) -> Path:
 
 
 def main(argv: Iterable[str] | None = None) -> int:
+    global SCENARIO
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--data-dir", type=Path, default=None)
     parser.add_argument("--out-dir", type=Path, default=None)
@@ -533,6 +534,10 @@ def main(argv: Iterable[str] | None = None) -> int:
     if args.data_dir:
         os.environ["SERM_DATA_DIR"] = str(args.data_dir)
     data = data_dir()
+    # Déduire le scénario du nom de dossier data/{scenario} si possible
+    if data.name not in ("data", ".") and "SERM_SCENARIO" not in os.environ:
+        os.environ["SERM_SCENARIO"] = data.name
+    SCENARIO = os.environ.get("SERM_SCENARIO", SCENARIO)
     racine_out = args.out_dir or _export_dir_defaut()
 
     if racine_out.exists() and args.effacer:

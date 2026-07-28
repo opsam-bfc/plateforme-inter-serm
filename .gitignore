@@ -6,6 +6,7 @@
 # ── Données lourdes exclues du dépôt (reproduire via scripts/prepare_*.py) ──
 # GPKG réseau originaux (remplacés par les .parquet optimisés)
 data/reseau_serm/*.gpkg
+data/*/reseau_serm/*.gpkg
 
 # Cache data.gouv (retéléchargé à la demande par datagouv_context.py)
 data/cache/

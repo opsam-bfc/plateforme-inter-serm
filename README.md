@@ -1,12 +1,15 @@
-# Plateforme d'analyse inter-SERM (OPSAM Ref2024)
+# Plateforme d'analyse inter-SERM (OPSAM)
 
 Plateforme **Streamlit** d'analyse inter-SERM (Dijon, Nord Franche-Comte, Besancon)
 pour la DREAL Bourgogne-Franche-Comte, calquee sur l'application
 `MACROZONE` existante.
 
-Elle exploite les sorties OPSAM Ref2024 (CSV de synthese par macrozone,
-matrice OD VL/PL, reseau routier) en reconstituant les volumes VL par
-deduction (`Total - PL_charges - PL_vides`).
+Elle exploite les sorties OPSAM (scenarios **Ref2024**, **sc2033**, …) :
+CSV de synthese par macrozone, matrice OD VL/PL, reseau routier — en
+reconstituant les volumes VL par deduction (`Total - PL_charges - PL_vides`).
+
+Un selecteur de scenario dans la sidebar permet de basculer entre les
+bundles `data/{scenario}/` (ex. `data/Ref2024/`, `data/sc2033/`).
 
 ## Perimetre V1
 
@@ -33,8 +36,8 @@ nouveau `lookup_dep_com_epci_macrozone.csv` pour regenerer le bundle
 
 ```
 plateforme_analyse_inter_SERM/
-|-- app.py                       # Streamlit multipage
-|-- data_loader.py               # Chargement bundle data/
+|-- app.py                       # Streamlit multipage (+ selecteur scenario)
+|-- data_loader.py               # Chargement bundle data/{scenario}/
 |-- visualizations.py            # Cartes, Sankey, donuts, lignes de desir
 |-- pdf_export.py                # Rapports PDF
 |-- style.css                    # Theme
@@ -43,21 +46,31 @@ plateforme_analyse_inter_SERM/
 |-- .streamlit/
 |   |-- config.toml
 |   `-- secrets.toml.example
-|-- scripts/                     # Precalculs hors app (executes a part)
+|-- config/
+|   `-- territoire.yaml          # Zones SERM + scenarios OPSAM
+|-- scripts/                     # Precalculs hors app
 |   |-- prepare_synthese_serm.py
 |   |-- prepare_perimetres_serm.py
 |   |-- prepare_reseau_serm.py
 |   |-- prepare_od_vl.py
 |   |-- prepare_lookup_epci.py
-|   `-- rebuild_for_new_perimeter.py
-`-- data/                        # Bundle leger (sortie des scripts)
-    |-- synthese_serm_vl_pl.csv
-    |-- perimetres_serm.geojson
-    |-- reseau_serm/{dijon,nfc,besancon}.gpkg
-    |-- top_od_vl_par_serm.parquet
-    |-- matrice_inter_serm.csv
-    |-- echanges_epci_serm.parquet
-    `-- lookup_serm_actuel.csv
+|   `-- rebuild_for_new_perimeter.py  # --scenario sc2033 --data-dir data/sc2033
+`-- data/
+    |-- avatar/                  # Partage (hors scenario)
+    |-- Ref2024/                 # Bundle Ref2024
+    |   |-- synthese_serm_vl_pl.csv
+    |   |-- reseau_serm/{dijon,nfc,besancon}.parquet
+    |   `-- ...
+    `-- sc2033/                  # Bundle sc2033 (a generer depuis le NAS)
+```
+
+## Generer le bundle sc2033
+
+Sur une machine avec acces NAS OPSAM :
+
+```bash
+python scripts/rebuild_for_new_perimeter.py --scenario sc2033 --data-dir data/sc2033 -v
+python scripts/optimize_for_deployment.py --data-dir data/sc2033
 ```
 
 ## Installation locale

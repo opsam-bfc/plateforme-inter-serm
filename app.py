@@ -31,12 +31,13 @@ except ImportError:
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from auth import deconnecter, verifier_authentification  # noqa: E402
-from config.territoire_loader import cfg, codes_zones  # noqa: E402
+from config.territoire_loader import cfg, codes_zones, scenarios  # noqa: E402
 
 from data_loader import (  # noqa: E402
     CLASSES_DISTANCE,
     FLUX_LABELS,
     SERM_INFO,
+    bundle_complet,
     calculer_metriques_serm,
     charger_centroides_zones,
     charger_communes_serm,
@@ -50,10 +51,14 @@ from data_loader import (  # noqa: E402
     charger_synthese_serm,
     charger_top_od_communes,
     charger_top_od_vl,
+    data_dir,
+    definir_scenario,
     info_serm,
     profil_distance_vl_pl,
     repartition_par_voie,
     repartition_vl_pl_par_flux,
+    scenario_actif,
+    scenarios_avec_bundle,
     signature_bundle,
 )
 from visualizations import (  # noqa: E402
@@ -126,7 +131,8 @@ def _fmt_milliers(val) -> str:
 
 def _page_header(titre: str, sous_titre: str | None = None) -> None:
     """En-tête de page unifié (kicker institution + titre + lead)."""
-    institution = cfg().plateforme.institution
+    plateforme = cfg().plateforme
+    kicker = f"{plateforme.institution} · OPSAM {scenario_actif()}"
     lead = (
         f"<p class='page-lead'>{sous_titre}</p>"
         if sous_titre
@@ -134,7 +140,7 @@ def _page_header(titre: str, sous_titre: str | None = None) -> None:
     )
     st.markdown(
         f"<div class='page-hero'>"
-        f"<p class='page-kicker'>{institution}</p>"
+        f"<p class='page-kicker'>{kicker}</p>"
         f"<h1 class='page-title'>{titre}</h1>"
         f"{lead}"
         f"</div>",
@@ -283,6 +289,48 @@ with st.sidebar:
     )
     st.divider()
 
+    # --- Sélecteur de scénario OPSAM -----------------------------------------
+    _scenarios_cfg = {sc.id: sc for sc in scenarios()}
+    _bundles_ok = scenarios_avec_bundle()
+    _ids_ui = list(_scenarios_cfg.keys()) or ["Ref2024"]
+    _defaut = scenario_actif()
+    if _defaut not in _ids_ui:
+        _defaut = _ids_ui[0]
+    _idx = _ids_ui.index(_defaut) if _defaut in _ids_ui else 0
+
+    def _libelle_scenario(sid: str) -> str:
+        sc = _scenarios_cfg.get(sid)
+        base = sc.libelle if sc else sid
+        return base if sid in _bundles_ok else f"{base} — bundle absent"
+
+    choix_scenario = st.selectbox(
+        "Scénario OPSAM",
+        _ids_ui,
+        index=_idx,
+        format_func=_libelle_scenario,
+        help=(
+            "Chaque scénario lit son bundle sous data/{id}/. "
+            "Générer sc2033 via : "
+            "python scripts/rebuild_for_new_perimeter.py "
+            "--scenario sc2033 --data-dir data/sc2033"
+        ),
+        key="select_scenario_opsam",
+    )
+    if choix_scenario != scenario_actif():
+        definir_scenario(choix_scenario)
+        st.cache_data.clear()
+        st.rerun()
+
+    if not bundle_complet(choix_scenario):
+        st.warning(
+            f"Bundle **{choix_scenario}** introuvable ou incomplet "
+            f"(attendu : `data/{choix_scenario}/synthese_serm_vl_pl.csv`). "
+            "Générez-le depuis une machine avec accès NAS OPSAM."
+        )
+
+    st.caption(f"Scénario actif : **{scenario_actif()}**")
+    st.divider()
+
     try:
         signature = signature_bundle()
     except Exception as e:
@@ -315,7 +363,6 @@ with st.sidebar:
 
     st.divider()
     with st.expander("Bundle de donnees", expanded=False):
-        from data_loader import data_dir
         st.code(str(data_dir()), language=None)
         st.caption(f"Signature (timestamps cumules) : {signature:.0f}")
 
@@ -330,6 +377,15 @@ with st.sidebar:
 # ---------------------------------------------------------------------------
 # Pre-chargement commun
 # ---------------------------------------------------------------------------
+
+if not bundle_complet(scenario_actif()):
+    st.error(
+        f"Impossible de charger le scénario **{scenario_actif()}** : "
+        f"bundle absent (`data/{scenario_actif()}/`). "
+        "Choisissez un autre scénario ou générez le bundle "
+        "(voir page Réglages)."
+    )
+    st.stop()
 
 try:
     df_synthese = _synthese(signature)
@@ -347,8 +403,9 @@ except Exception as exc:
 if page == "Vue d'ensemble":
     _page_header(
         "Vue d'ensemble des trois SERM de Bourgogne-Franche-Comté",
-        "Indicateurs agrégés issus de la synthèse OPSAM Ref2024, avec les "
-        "volumes VL reconstitués par soustraction Total − PL (chargés + vides).",
+        f"Indicateurs agrégés issus de la synthèse OPSAM {scenario_actif()}, "
+        "avec les volumes VL reconstitués par soustraction Total − PL "
+        "(chargés + vides).",
     )
 
     _codes_actifs = codes_zones(inclure_hors_serm=False)
@@ -904,6 +961,10 @@ elif page == "Reglages":
         "ou exporter les livrables par SERM.",
     )
     st.markdown(
+        f"**Scénario actif :** `{scenario_actif()}` — "
+        f"bundle : `{data_dir()}`"
+    )
+    st.markdown(
         "Les périmètres SERM peuvent évoluer. Pour mettre à jour la "
         "plateforme :"
     )
@@ -913,13 +974,26 @@ elif page == "Reglages":
         "(colonnes `M1` et `M2`) ;\n"
         "2. Mettre a jour la variable d'environnement "
         "`SERM_LOOKUP_CSV` si necessaire ;\n"
-        "3. Executer `python scripts/rebuild_for_new_perimeter.py` "
-        "pour regenerer le bundle `data/`.\n"
+        "3. Regenerer le bundle du scenario "
+        f"**{scenario_actif()}** (commande ci-dessous).\n"
+    )
+
+    st.subheader("Générer / régénérer un scénario OPSAM")
+    st.code(
+        f"python scripts/rebuild_for_new_perimeter.py "
+        f"--scenario {scenario_actif()} "
+        f"--data-dir data/{scenario_actif()} -v\n"
+        f"python scripts/optimize_for_deployment.py "
+        f"--data-dir data/{scenario_actif()}",
+        language="bash",
+    )
+    st.caption(
+        "Chemins NAS par scénario : `config/territoire.yaml` → `scenarios`. "
+        "Exemple sc2033 : `--scenario sc2033 --data-dir data/sc2033`."
     )
 
     st.divider()
     st.subheader("Bundle actuel")
-    from data_loader import data_dir
     chemins = sorted(data_dir().rglob("*"))
     rows = []
     for p in chemins:
@@ -978,12 +1052,19 @@ elif page == "Reglages":
     st.divider()
     st.subheader("Lancer la regeneration du bundle")
     st.caption(
-        "Equivalent shell : `python scripts/rebuild_for_new_perimeter.py`. "
+        f"Equivalent shell : `python scripts/rebuild_for_new_perimeter.py "
+        f"--scenario {scenario_actif()} --data-dir data/{scenario_actif()}`. "
         "Cette operation peut prendre plusieurs minutes (intersection reseau)."
     )
     if st.button(":material/refresh: Lancer la regeneration"):
         racine = Path(__file__).resolve().parent
-        cmd = [sys.executable, str(racine / "scripts" / "rebuild_for_new_perimeter.py"), "-v"]
+        cmd = [
+            sys.executable,
+            str(racine / "scripts" / "rebuild_for_new_perimeter.py"),
+            "--scenario", scenario_actif(),
+            "--data-dir", str(data_dir()),
+            "-v",
+        ]
         with st.spinner("Execution..."):
             try:
                 result = subprocess.run(

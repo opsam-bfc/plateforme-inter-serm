@@ -89,6 +89,17 @@ class RegionConfig:
 
 
 @dataclass(frozen=True)
+class ScenarioConfig:
+    """Un scénario OPSAM (bundle data/{id}/ + chemins NAS de rebuild)."""
+    id: str
+    libelle: str
+    opsam_outputs: str = ""
+    opsam_base: str = ""
+    matrice_vl_csv: str = ""
+    reseau_shp: str = ""
+
+
+@dataclass(frozen=True)
 class PlateformeConfig:
     """Identite de la plateforme."""
     nom: str
@@ -117,6 +128,7 @@ class TerritoireConfig:
     zones: list[Zone]
     zone_hors_serm: Optional[Zone]
     chemins: CheminsConfig
+    scenarios: list[ScenarioConfig] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -206,7 +218,7 @@ def charger_config(chemin: Optional[str] = None) -> TerritoireConfig:
         _zone_depuis_dict(hors_raw) if hors_raw else None
     )
 
-    # Chemins
+    # Chemins (défaut / rétrocompat — scénario actif peut les surcharger)
     ch = raw.get("chemins", {})
     chemins = CheminsConfig(
         opsam_outputs=ch.get("opsam_outputs", ""),
@@ -218,12 +230,39 @@ def charger_config(chemin: Optional[str] = None) -> TerritoireConfig:
         reseau_shp=ch.get("reseau_shp", ""),
     )
 
+    # Scénarios OPSAM (multi-bundle data/{id}/)
+    scenarios: list[ScenarioConfig] = []
+    for sc in raw.get("scenarios", []) or []:
+        scenarios.append(
+            ScenarioConfig(
+                id=str(sc["id"]),
+                libelle=str(sc.get("libelle", sc["id"])),
+                opsam_outputs=str(sc.get("opsam_outputs", "")),
+                opsam_base=str(sc.get("opsam_base", "")),
+                matrice_vl_csv=str(sc.get("matrice_vl_csv", "")),
+                reseau_shp=str(sc.get("reseau_shp", "")),
+            )
+        )
+    if not scenarios and plateforme.scenario_opsam:
+        # Rétrocompat : un seul scénario dérivé de plateforme + chemins
+        scenarios = [
+            ScenarioConfig(
+                id=plateforme.scenario_opsam,
+                libelle=plateforme.scenario_opsam,
+                opsam_outputs=chemins.opsam_outputs,
+                opsam_base=chemins.opsam_base,
+                matrice_vl_csv=chemins.matrice_vl_csv,
+                reseau_shp=chemins.reseau_shp,
+            )
+        ]
+
     return TerritoireConfig(
         plateforme=plateforme,
         region=region,
         zones=zones,
         zone_hors_serm=zone_hors_serm,
         chemins=chemins,
+        scenarios=scenarios,
     )
 
 
@@ -287,3 +326,45 @@ def ordre_zones() -> list[int]:
 def slugs_reseau() -> list[str]:
     """Retourne les slugs des zones disposant d'un reseau routier GPKG/Parquet."""
     return [z.slug for z in charger_config().zones]
+
+
+def scenarios() -> list[ScenarioConfig]:
+    """Liste des scénarios OPSAM déclarés dans la config."""
+    return list(charger_config().scenarios)
+
+
+def scenario_par_id(scenario_id: str) -> Optional[ScenarioConfig]:
+    """Retourne le ScenarioConfig pour ``scenario_id``, ou None."""
+    for sc in scenarios():
+        if sc.id == scenario_id:
+            return sc
+    return None
+
+
+def scenario_defaut() -> str:
+    """Identifiant du scénario par défaut (plateforme.scenario_opsam)."""
+    config = charger_config()
+    if config.plateforme.scenario_opsam:
+        return config.plateforme.scenario_opsam
+    if config.scenarios:
+        return config.scenarios[0].id
+    return "Ref2024"
+
+
+def chemins_pour_scenario(scenario_id: str | None = None) -> CheminsConfig:
+    """Chemins NAS pour un scénario (surcharge sur les chemins globaux)."""
+    config = charger_config()
+    sid = scenario_id or scenario_defaut()
+    sc = scenario_par_id(sid)
+    base = config.chemins
+    if sc is None:
+        return base
+    return CheminsConfig(
+        opsam_outputs=sc.opsam_outputs or base.opsam_outputs,
+        opsam_base=sc.opsam_base or base.opsam_base,
+        lookup_csv=base.lookup_csv,
+        zonage_shp=base.zonage_shp,
+        epci_shp=base.epci_shp,
+        matrice_vl_csv=sc.matrice_vl_csv or base.matrice_vl_csv,
+        reseau_shp=sc.reseau_shp or base.reseau_shp,
+    )

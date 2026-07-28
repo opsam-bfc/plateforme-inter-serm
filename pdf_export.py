@@ -96,8 +96,14 @@ def generer_rapport_global(
     metriques,
     fig_carte: Optional[go.Figure],
     fig_heatmap: Optional[go.Figure],
+    scenario: str | None = None,
 ) -> bytes:
     """Rapport global inter-SERM (KPI, carte, heatmap)."""
+    try:
+        from data_loader import scenario_actif
+        scenario = scenario or scenario_actif()
+    except Exception:
+        scenario = scenario or "OPSAM"
     buffer = BytesIO()
     doc = SimpleDocTemplate(
         buffer, pagesize=landscape(A4),
@@ -108,7 +114,7 @@ def generer_rapport_global(
     styles = _styles()
     story: list = []
     story.append(Paragraph(
-        "Plateforme inter-SERM - Synthese (scenario OPSAM Ref2024)",
+        f"Plateforme inter-SERM - Synthese (scenario OPSAM {scenario})",
         styles["titre"],
     ))
     story.append(Paragraph(
@@ -190,7 +196,12 @@ def generer_rapport_serm(
     styles = _styles()
     story: list = []
     story.append(Paragraph(info_serm["nom"], styles["titre"]))
-    story.append(Paragraph("Scenario OPSAM Ref2024 - Atmo BFC", styles["p"]))
+    try:
+        from data_loader import scenario_actif
+        _sc = scenario_actif()
+    except Exception:
+        _sc = "OPSAM"
+    story.append(Paragraph(f"Scenario OPSAM {_sc} - Atmo BFC", styles["p"]))
     story.append(Spacer(1, 6))
 
     kpi = [[
