@@ -50,3 +50,6 @@ htmlcov/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Backups d'optimisation par scenario
+data/*/.backup_avant_optim/
