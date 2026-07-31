@@ -574,6 +574,283 @@ def filtrer_flux_od(
     return df[masque]
 
 
+def _centroides_communes_epci() -> pd.DataFrame:
+    """Table COM / NOM_COM / EPCI / lon / lat depuis les centroides zones."""
+    centro = charger_centroides_zones()
+    if centro.empty:
+        return pd.DataFrame(
+            columns=["COM", "NOM_COM", "EPCI", "lon", "lat", "code_serm"]
+        )
+    agg = {
+        "lon": ("lon", "mean"),
+        "lat": ("lat", "mean"),
+        "NOM_COM": ("NOM_COM", "first"),
+        "EPCI": ("EPCI", "first"),
+    }
+    if "code_serm" in centro.columns:
+        agg["code_serm"] = ("code_serm", "first")
+    return (
+        centro.dropna(subset=["COM"])
+        .assign(COM=lambda d: _code_epci_str(d["COM"]))
+        .groupby("COM", as_index=False)
+        .agg(**agg)
+        .assign(EPCI=lambda d: _code_epci_str(d["EPCI"]))
+    )
+
+
+def agreger_top_od_vl_en_communes(df_vl: pd.DataFrame) -> pd.DataFrame:
+    """Reagrege ``top_od_vl_par_serm`` au format commune / EPCI des Corridors.
+
+    Utile en secours lorsque le top commune (``top_od_com_serm``) a elimine
+    un EPCI a faibles volumes (troncature TOP 300) alors que des flux
+    zone OPSAM existent encore dans ``top_od_vl_par_serm``.
+    """
+    if df_vl is None or df_vl.empty:
+        return pd.DataFrame()
+
+    com_c = _centroides_communes_epci()
+    com_meta = com_c.set_index("COM")
+    epci_c = (
+        com_c.groupby("EPCI", as_index=False)
+        .agg(lon=("lon", "mean"), lat=("lat", "mean"))
+        if not com_c.empty
+        else pd.DataFrame(columns=["EPCI", "lon", "lat"])
+    )
+    noms_epci = mapping_noms_epci()
+    blocs: list[pd.DataFrame] = []
+
+    for (serm, typo), bloc in df_vl.groupby(["serm", "typologie"]):
+        if typo == "interne_serm":
+            sous = bloc[bloc["com_O"].astype(str) != bloc["com_D"].astype(str)]
+            top = (
+                sous.groupby(["com_O", "com_D"], as_index=False)["volume"]
+                .sum()
+            )
+            top["com_O"] = _code_epci_str(top["com_O"])
+            top["com_D"] = _code_epci_str(top["com_D"])
+            top["epci_O"] = top["com_O"].map(com_meta["EPCI"])
+            top["epci_D"] = top["com_D"].map(com_meta["EPCI"])
+            top["nom_O"] = top["com_O"].map(com_meta["NOM_COM"])
+            top["nom_D"] = top["com_D"].map(com_meta["NOM_COM"])
+            top["lon_O"] = top["com_O"].map(com_meta["lon"])
+            top["lat_O"] = top["com_O"].map(com_meta["lat"])
+            top["lon_D"] = top["com_D"].map(com_meta["lon"])
+            top["lat_D"] = top["com_D"].map(com_meta["lat"])
+        elif typo == "echange_emis":
+            sous = bloc[bloc["epci_D"].astype(str) != "0"]
+            top = (
+                sous.groupby(["com_O", "epci_D"], as_index=False)["volume"]
+                .sum()
+            )
+            top["com_O"] = _code_epci_str(top["com_O"])
+            top["epci_D"] = _code_epci_str(top["epci_D"])
+            top["epci_O"] = top["com_O"].map(com_meta["EPCI"])
+            top["com_D"] = top["epci_D"]
+            top["nom_O"] = top["com_O"].map(com_meta["NOM_COM"])
+            top["nom_D"] = top["epci_D"].map(noms_epci).fillna(top["epci_D"])
+            top["lon_O"] = top["com_O"].map(com_meta["lon"])
+            top["lat_O"] = top["com_O"].map(com_meta["lat"])
+            top = top.merge(
+                epci_c.rename(columns={
+                    "EPCI": "epci_D", "lon": "lon_D", "lat": "lat_D",
+                }),
+                on="epci_D", how="left",
+            )
+        elif typo == "echange_recus":
+            sous = bloc[bloc["epci_O"].astype(str) != "0"]
+            top = (
+                sous.groupby(["epci_O", "com_D"], as_index=False)["volume"]
+                .sum()
+            )
+            top["epci_O"] = _code_epci_str(top["epci_O"])
+            top["com_D"] = _code_epci_str(top["com_D"])
+            top["epci_D"] = top["com_D"].map(com_meta["EPCI"])
+            top["com_O"] = top["epci_O"]
+            top["nom_O"] = top["epci_O"].map(noms_epci).fillna(top["epci_O"])
+            top["nom_D"] = top["com_D"].map(com_meta["NOM_COM"])
+            top["lon_D"] = top["com_D"].map(com_meta["lon"])
+            top["lat_D"] = top["com_D"].map(com_meta["lat"])
+            top = top.merge(
+                epci_c.rename(columns={
+                    "EPCI": "epci_O", "lon": "lon_O", "lat": "lat_O",
+                }),
+                on="epci_O", how="left",
+            )
+        else:
+            continue
+
+        top["serm"] = serm
+        top["nom_serm"] = SERM_INFO.get(int(serm), {}).get("nom", str(serm))
+        top["typologie"] = typo
+        blocs.append(top)
+
+    if not blocs:
+        return pd.DataFrame()
+    cols = [
+        "serm", "nom_serm", "typologie",
+        "com_O", "nom_O", "lon_O", "lat_O",
+        "com_D", "nom_D", "lon_D", "lat_D",
+        "volume", "epci_O", "epci_D",
+    ]
+    out = pd.concat(blocs, ignore_index=True)
+    for col in cols:
+        if col not in out.columns:
+            out[col] = None
+    return out[cols]
+
+
+def flux_od_corridors(
+    code_serm: int,
+    typologie: str,
+    type_territoire: str | None = None,
+    code: str | None = None,
+) -> pd.DataFrame:
+    """Flux OD pour la page Corridors, avec secours zone OPSAM si besoin.
+
+    1. Filtre ``top_od_com_serm`` (fichier principal de l'UI).
+    2. Si un territoire est demande et qu'aucun couple n'y figure (cas
+       typique d'un EPCI sous le seuil TOP 300, ex. CC Arbois en flux
+       internes), reagrege ``top_od_vl_par_serm`` puis refiltre.
+    """
+    try:
+        principal = charger_top_od_communes()
+    except FileNotFoundError:
+        principal = pd.DataFrame()
+
+    filtre = pd.DataFrame()
+    if not principal.empty:
+        sous = principal[
+            (principal["serm"] == code_serm)
+            & (principal["typologie"] == typologie)
+        ]
+        filtre = filtrer_flux_od(sous, type_territoire, code)
+        if not type_territoire or not code or not filtre.empty:
+            return enrichir_epci_flux_od(filtre)
+
+    # Secours : couples absents du top commune mais presents au niveau zone.
+    try:
+        secours = agreger_top_od_vl_en_communes(charger_top_od_vl())
+    except FileNotFoundError:
+        return enrichir_epci_flux_od(filtre)
+
+    if secours.empty:
+        return enrichir_epci_flux_od(filtre)
+
+    sous_s = secours[
+        (secours["serm"] == code_serm)
+        & (secours["typologie"] == typologie)
+    ]
+    return filtrer_flux_od(sous_s, type_territoire, code)
+
+
+def territoires_corridors(code_serm: int, typologie: str) -> pd.DataFrame:
+    """Territoires filtrables : EPCI du SERM + communes visibles dans les flux.
+
+    Les EPCI du polygone (`limites_epci.geojson`) sont toujours proposes,
+    meme s'ils n'ont aucun couple dans le top 300 commune (ex. Arbois).
+    Le volume affiche combine top commune, top zone et echanges EPCI.
+    """
+    colonnes = ["type", "code", "nom", "volume"]
+    morceaux: list[pd.DataFrame] = []
+    noms_epci = mapping_noms_epci()
+
+    # 1) EPCI du SERM (couche geographique — toujours presents).
+    try:
+        epci_gdf = charger_limites_epci()
+    except Exception:
+        epci_gdf = None
+    if epci_gdf is not None and not epci_gdf.empty:
+        epci_serm = epci_gdf[epci_gdf["code_serm"] == code_serm]
+        if not epci_serm.empty:
+            codes = _code_epci_str(epci_serm["CODE_SIREN"])
+            noms = epci_serm["NOM"].astype(str).values
+            morceaux.append(pd.DataFrame({
+                "type": "epci",
+                "code": codes.values,
+                "nom": noms,
+                "volume": 0.0,
+            }))
+
+    # 2) Volumes issus des flux commune + secours zone OPSAM.
+    try:
+        flux = flux_od_corridors(code_serm, typologie)
+        if not flux.empty:
+            morceaux.append(territoires_flux_od(flux))
+        # Completer avec les couples absents du top commune (ex. Arbois).
+        secours = agreger_top_od_vl_en_communes(charger_top_od_vl())
+        if not secours.empty:
+            sous_s = secours[
+                (secours["serm"] == code_serm)
+                & (secours["typologie"] == typologie)
+            ]
+            if not sous_s.empty:
+                morceaux.append(territoires_flux_od(sous_s))
+    except Exception as exc:
+        LOG.debug("Territoires flux OD indisponibles : %s", exc)
+
+    # 3) Volumes agreges EPCI (page echanges) pour informer le libelle.
+    try:
+        ech = charger_echanges_epci()
+        typo_ech = (
+            "echange_serm"
+            if typologie in ("echange_emis", "echange_recus")
+            else "interne_serm"
+        )
+        sous = ech[(ech["serm"] == code_serm) & (ech["typologie"] == typo_ech)]
+        if not sous.empty:
+            for col, col_nom in (
+                ("epci_O", "epci_O_nom"), ("epci_D", "epci_D_nom"),
+            ):
+                codes = _code_epci_str(sous[col])
+                noms = (
+                    sous[col_nom].astype(str)
+                    if col_nom in sous.columns
+                    else codes.map(noms_epci).fillna(codes)
+                )
+                morceaux.append(pd.DataFrame({
+                    "type": "epci",
+                    "code": codes.values,
+                    "nom": noms.values,
+                    "volume": sous["volume"].values,
+                }))
+    except Exception as exc:
+        LOG.debug("Volumes echanges EPCI indisponibles : %s", exc)
+
+    # 4) Communes du SERM (centroides) pour les typologies internes.
+    if typologie == "interne_serm":
+        try:
+            com_c = _centroides_communes_epci()
+            if "code_serm" in com_c.columns:
+                com_serm = com_c[com_c["code_serm"] == code_serm]
+            else:
+                com_serm = com_c
+            if not com_serm.empty:
+                morceaux.append(pd.DataFrame({
+                    "type": "commune",
+                    "code": com_serm["COM"].values,
+                    "nom": com_serm["NOM_COM"].astype(str).values,
+                    "volume": 0.0,
+                }))
+        except Exception as exc:
+            LOG.debug("Communes centroides indisponibles : %s", exc)
+
+    if not morceaux:
+        return pd.DataFrame(columns=colonnes)
+
+    tous = pd.concat(morceaux, ignore_index=True)
+    tous = tous[~tous["code"].isin(["0", "", "nan", "None"])]
+    tous = tous[tous["code"].notna()]
+    if tous.empty:
+        return pd.DataFrame(columns=colonnes)
+
+    return (
+        tous.groupby(["type", "code"], as_index=False)
+        .agg(nom=("nom", "first"), volume=("volume", "sum"))
+        .sort_values(["type", "volume"], ascending=[True, False])
+        .reset_index(drop=True)
+    )[colonnes]
+
+
 def charger_centroides_zones() -> pd.DataFrame:
     """Charge les centroides des zones OPSAM (lon/lat WGS84)."""
     chemin = fichier_data("centroides_zones.parquet")

@@ -55,6 +55,7 @@ from data_loader import (  # noqa: E402
     definir_scenario,
     exporter_reseau_shapefile_zip,
     filtrer_flux_od,
+    flux_od_corridors,
     info_serm,
     profil_distance_vl_pl,
     repartition_par_voie,
@@ -62,7 +63,7 @@ from data_loader import (  # noqa: E402
     scenario_actif,
     scenarios_avec_bundle,
     signature_bundle,
-    territoires_flux_od,
+    territoires_corridors,
 )
 from visualizations import (  # noqa: E402
     METRIQUE_LABELS,
@@ -259,11 +260,9 @@ def _lignes_de_desir(
     communes_gdf = charger_communes_serm(code_serm)
     epci_gdf = charger_limites_epci()
     perimetres = charger_perimetres_serm()
-    try:
-        top_od = charger_top_od_communes()
-    except FileNotFoundError:
-        top_od = charger_top_od_vl()
-    top_od = filtrer_flux_od(top_od, filtre_type, filtre_code)
+    top_od = flux_od_corridors(
+        code_serm, typologie, filtre_type, filtre_code,
+    )
     return lignes_de_desir(
         top_od, perimetres, style_mapbox,
         code_serm=code_serm, typologie=typologie,
@@ -276,11 +275,7 @@ def _lignes_de_desir(
 def _territoires_flux(code_serm: int, typologie: str, signature: float):
     """Territoires (EPCI / communes) filtrables pour un SERM et une typologie."""
     del signature
-    top_od = charger_top_od_communes()
-    sous = top_od[
-        (top_od["serm"] == code_serm) & (top_od["typologie"] == typologie)
-    ]
-    return territoires_flux_od(sous)
+    return territoires_corridors(code_serm, typologie)
 
 
 @st.cache_data(show_spinner="Chargement des limites communales...")
@@ -796,25 +791,16 @@ elif page == "Corridors & top flux OD":
     st.plotly_chart(fig_lignes, use_container_width=True)
 
     st.subheader(f"Top {nb_max} flux — {info_serm(code)['nom']} ({typo})")
-    top_od_com = _top_od_communes(signature)
     try:
-        perimetre_typo = top_od_com[
-            (top_od_com["serm"] == code) & (top_od_com["typologie"] == typo)
-        ]
-        sous = filtrer_flux_od(
-            perimetre_typo, filtre_type, filtre_code,
+        sous = flux_od_corridors(
+            code, typo, filtre_type, filtre_code,
         ).nlargest(nb_max, "volume").copy()
         if sous.empty:
-            seuil_bundle = _fmt_milliers(
-                float(perimetre_typo["volume"].min() or 0)
-            )
             st.info(
-                "Aucun flux de ce territoire dans le bundle pour cette "
-                f"typologie — le plus petit flux conservé vaut "
-                f"{seuil_bundle} VL/j. Les volumes agrégés restent visibles "
-                "page « Échanges inter-SERM & EPCI ». Pour conserver les "
-                "flux des EPCI à faibles volumes lors du prochain rebuild : "
-                "option `--top-n-epci` de `prepare_od_vl.py`."
+                "Aucun flux trouvé pour ce territoire et cette typologie. "
+                "Vérifier la page « Échanges inter-SERM & EPCI » (volumes "
+                "agrégés) ou regénérer le bundle OD avec "
+                "`prepare_od_vl.py --top-n-epci 50`."
             )
         else:
             col_nom_O = "nom_O" if "nom_O" in sous.columns else "nom_com_O"
