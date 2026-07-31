@@ -29,14 +29,14 @@ plateforme:
 #
 scenarios:
   - id: Ref2024
-    libelle: "Ref2024 (référence)"
+    libelle: "2024 (référence)"
     opsam_outputs: '\\poste-2-170\OPSAM_v3\OPSAM\Outputs\Ref2024'
     opsam_base: '\\poste-2-170\OPSAM_v3\OPSAM\Base\Ref2024'
     matrice_vl_csv: 'matrice_vl_Ref2024.csv'
     reseau_shp: '\\nas-bfc\COMMUN\21_MOBILITE\21.4_PROJETS\DREAL\2026_SERM\4_OUTPUT\DATA\reseau_affecte_ref2024_serm\reseau_final_Ref2024_serm_true_shape.shp'
 
   - id: sc2033
-    libelle: "sc2033 (horizon 2033)"
+    libelle: "2033 (projection)"
     opsam_outputs: '\\poste-2-170\OPSAM_v3\OPSAM\Outputs\sc2033'
     opsam_base: '\\poste-2-170\OPSAM_v3\OPSAM\Base\sc2033'
     matrice_vl_csv: 'matrice_vl_sc2033.csv'
