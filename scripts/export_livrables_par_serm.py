@@ -40,10 +40,12 @@ from data_loader import (  # noqa: E402
     charger_echanges_epci,
     charger_matrice_inter_serm,
     charger_perimetres_serm,
+    charger_reseau_serm,
     charger_synthese_serm,
     charger_top_od_communes,
     data_dir,
     enrichir_noms_epci_flux_od,
+    gdf_vers_shapefile_zip,
 )
 
 LOG = logging.getLogger("export_livrables")
@@ -105,10 +107,16 @@ FICHES: dict[str, dict[str, str]] = {
         "description": (
             "Troncons Autoroute / Nationale / Departementale du reseau "
             "detaille OPSAM situes dans le SERM. TMJA_P (tous vehicules), "
-            "PL_P et VL_jour = TMJA_P - PL_P."
+            "VL/PL et volumes I/E/T recalés sur TMJA_P."
         ),
-        "colonnes_cles": "CL_ADMIN, TMJA_P, PL_P, VL_jour, geometry",
-        "usage": "Cartographie du trafic par SERM (carte TMJA / VL).",
+        "colonnes_cles": (
+            "CL_ADMIN, TMJA_P, VL_jour, PL_jour, TMJA_I/E/T, PART_I/E/T, "
+            "geometry"
+        ),
+        "usage": (
+            "Cartographie du trafic par SERM ; export Shapefile ZIP "
+            "(Lambert 93) pour SIG."
+        ),
     },
     "limites_communes": {
         "titre": "Limites communales du SERM",
@@ -316,7 +324,7 @@ def exporter_serm(
             str(f_peri.relative_to(racine_out)), nom, "perimetre", f_peri,
         ))
 
-    # --- Reseau GPKG ---
+    # --- Reseau GPKG (si present) + Shapefile ZIP (depuis parquet/gpkg) ---
     f_res = data / "reseau_serm" / f"{slug}.gpkg"
     dst_res = d_socle / f"reseau_routier_{slug}.gpkg"
     if _copier_si_existe(f_res, dst_res):
@@ -324,6 +332,23 @@ def exporter_serm(
         manifest.append(_manifest_ligne(
             str(dst_res.relative_to(racine_out)), nom, "reseau", dst_res,
         ))
+
+    try:
+        gdf_res = charger_reseau_serm(slug)
+        zip_bytes = gdf_vers_shapefile_zip(
+            gdf_res, f"reseau_trafic_{slug}", epsg=2154,
+        )
+        dst_shp = d_socle / f"reseau_trafic_{slug}.zip"
+        dst_shp.write_bytes(zip_bytes)
+        _ecrire_note_fiche(
+            d_socle / "NOTE_reseau_shapefile.md", "reseau", dst_shp.name,
+        )
+        manifest.append(_manifest_ligne(
+            str(dst_shp.relative_to(racine_out)), nom, "reseau", dst_shp,
+        ))
+        LOG.info("Shapefile réseau écrit : %s", dst_shp.name)
+    except Exception as exc:
+        LOG.warning("Export shapefile réseau %s : %s", slug, exc)
 
     # --- Limites communes ---
     f_com = data / f"limites_communes_serm{code}.geojson"

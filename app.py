@@ -53,6 +53,7 @@ from data_loader import (  # noqa: E402
     charger_top_od_vl,
     data_dir,
     definir_scenario,
+    exporter_reseau_shapefile_zip,
     info_serm,
     profil_distance_vl_pl,
     repartition_par_voie,
@@ -174,6 +175,13 @@ def _perimetres(signature: float):
 def _reseau(slug: str, signature: float):
     del signature
     return charger_reseau_serm(slug)
+
+
+@st.cache_data(show_spinner="Preparation du shapefile reseau...")
+def _zip_reseau_shapefile(slug: str, signature: float) -> bytes:
+    """ZIP shapefile (Lambert 93) du réseau trafic du SERM."""
+    del signature
+    return exporter_reseau_shapefile_zip(slug)
 
 
 @st.cache_data(show_spinner="Generation de la carte reseau...", max_entries=24)
@@ -621,6 +629,32 @@ elif page == "Socle par SERM":
     except Exception as exc:
         fig_carte_serm = None
         st.warning(f"Carte indisponible : {exc}")
+
+    # Export SIG du réseau trafic (toutes les métriques TMJA / I-E-T).
+    try:
+        zip_shp = _zip_reseau_shapefile(info["slug"], signature)
+        col_dl, col_info = st.columns([1, 2])
+        with col_dl:
+            st.download_button(
+                ":material/download: Exporter le réseau (Shapefile)",
+                zip_shp,
+                file_name=(
+                    f"reseau_trafic_{info['slug']}_{scenario_actif()}.zip"
+                ),
+                mime="application/zip",
+                help=(
+                    "Archive ZIP (shp/shx/dbf/prj) en Lambert 93 — "
+                    "colonnes TMJA_P, VL/PL, TMJA_I/E/T, PART_I/E/T."
+                ),
+                key=f"dl_shp_reseau_{info['slug']}",
+            )
+        with col_info:
+            st.caption(
+                "Export SIG : couche réseau routier du SERM avec les "
+                "indicateurs de trafic (EPSG:2154)."
+            )
+    except Exception as exc:
+        st.caption(f"Export shapefile indisponible : {exc}")
 
     st.divider()
 

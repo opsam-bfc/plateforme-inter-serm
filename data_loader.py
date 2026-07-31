@@ -11,8 +11,11 @@ invalider les caches Streamlit lorsque les fichiers changent.
 
 from __future__ import annotations
 
+import io
 import logging
 import os
+import tempfile
+import zipfile
 from functools import lru_cache
 from pathlib import Path
 
@@ -253,6 +256,78 @@ def charger_reseau_serm(slug: str) -> gpd.GeoDataFrame:
         f"(cherche reseau_serm/{slug}.parquet puis .gpkg). "
         "Lancer scripts/prepare_reseau_serm.py ou "
         "scripts/optimize_for_deployment.py."
+    )
+
+
+def gdf_vers_shapefile_zip(
+    gdf: gpd.GeoDataFrame,
+    nom_couche: str,
+    *,
+    epsg: int = 2154,
+) -> bytes:
+    """Serialise un GeoDataFrame en archive ZIP shapefile (shp/shx/dbf/prj/cpg).
+
+    Par défaut en Lambert 93 (EPSG:2154), standard SIG DREAL / OPSAM.
+    Les noms de colonnes sont tronqués à 10 caractères (limite DBF).
+    """
+    if gdf is None or gdf.empty:
+        raise ValueError("GeoDataFrame vide — export shapefile impossible.")
+
+    couche = "".join(
+        c if (c.isalnum() or c in "_-") else "_" for c in nom_couche
+    ).strip("_") or "couche"
+    couche = couche[:50]
+
+    export = gdf.copy()
+    if export.crs is None:
+        export = export.set_crs(4326)
+    if export.crs.to_epsg() != epsg:
+        export = export.to_crs(epsg)
+
+    # Limite shapefile / DBF : 10 caractères par champ.
+    renames: dict[str, str] = {}
+    used: set[str] = set()
+    for col in export.columns:
+        if col == "geometry":
+            continue
+        base = str(col)[:10]
+        candidate = base
+        n = 1
+        while candidate.lower() in used:
+            suffix = f"_{n}"
+            candidate = f"{base[: 10 - len(suffix)]}{suffix}"
+            n += 1
+        used.add(candidate.lower())
+        if candidate != col:
+            renames[col] = candidate
+    if renames:
+        export = export.rename(columns=renames)
+
+    with tempfile.TemporaryDirectory(prefix="serm_shp_") as tmp:
+        tmp_path = Path(tmp)
+        shp_path = tmp_path / f"{couche}.shp"
+        export.to_file(shp_path, driver="ESRI Shapefile", encoding="utf-8")
+
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+            for fichier in sorted(tmp_path.iterdir()):
+                if fichier.is_file():
+                    zf.write(fichier, arcname=fichier.name)
+        return buf.getvalue()
+
+
+def exporter_reseau_shapefile_zip(
+    slug: str,
+    *,
+    epsg: int = 2154,
+    nom_couche: str | None = None,
+) -> bytes:
+    """Charge le réseau trafic d'un SERM et renvoie un ZIP shapefile."""
+    gdf = charger_reseau_serm(slug)
+    return gdf_vers_shapefile_zip(
+        gdf,
+        nom_couche or f"reseau_trafic_{slug}",
+        epsg=epsg,
     )
 
 
