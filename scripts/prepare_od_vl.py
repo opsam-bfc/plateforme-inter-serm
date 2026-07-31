@@ -38,6 +38,9 @@ EPSG_AFFICHAGE = 4326
 EPSG_CALCULS = 2154
 
 TOP_N_DEFAUT = 300
+# Flux conserves en plus du top global, pour chaque EPCI implique : garantit
+# qu'un EPCI a faibles volumes reste filtrable dans la plateforme.
+TOP_N_EPCI_DEFAUT = 50
 
 
 # ---------------------------------------------------------------------------
@@ -404,19 +407,62 @@ def centroides_epci(centroides_zones: pd.DataFrame) -> pd.DataFrame:
     )
 
 
+def _tops_par_epci(
+    agg: pd.DataFrame,
+    cles_couple: list[str],
+    top_n: int,
+    top_n_epci: int,
+) -> pd.DataFrame:
+    """Union du top global et du top de chaque EPCI implique.
+
+    Sans cette union, un EPCI aux volumes modestes (ex. une CC rurale
+    recemment rattachee a un SERM) n'apparait dans aucun couple du top
+    global : le filtre par territoire de l'application ne trouve alors
+    aucun flux, bien que ceux-ci existent dans la matrice OD.
+    """
+    blocs = [agg.nlargest(top_n, "volume")]
+    if top_n_epci > 0:
+        codes = pd.unique(
+            pd.concat(
+                [agg.get("epci_O"), agg.get("epci_D")]
+            ).dropna().astype(str)
+        )
+        for code_epci in codes:
+            if code_epci in ("0", "", "nan", "None"):
+                continue
+            masque = pd.Series(False, index=agg.index)
+            for col in ("epci_O", "epci_D"):
+                if col in agg.columns:
+                    masque |= agg[col].astype(str) == code_epci
+            blocs.append(agg[masque].nlargest(top_n_epci, "volume"))
+    return (
+        pd.concat(blocs, ignore_index=True)
+        .drop_duplicates(subset=cles_couple)
+        .reset_index(drop=True)
+    )
+
+
 def top_od_communes_par_serm(
     df_od: pd.DataFrame,
     centroides_zones: pd.DataFrame,
     top_n: int = TOP_N_DEFAUT,
+    top_n_epci: int = TOP_N_EPCI_DEFAUT,
 ) -> pd.DataFrame:
     """Top N flux OD agreges a la commune (interne) ou a l'EPCI (echange).
 
+    Au top global s'ajoute, pour chaque EPCI implique, ses ``top_n_epci``
+    plus gros flux : le filtre par territoire de l'application reste ainsi
+    exploitable pour les EPCI a faibles volumes.
+
     Colonnes de sortie :
       serm, nom_serm, typologie, com_O, nom_O, lon_O, lat_O,
-      com_D, nom_D, lon_D, lat_D, volume.
+      com_D, nom_D, lon_D, lat_D, volume, epci_O, epci_D.
     """
     com_c = centroides_communes(centroides_zones)
     epci_c = centroides_epci(centroides_zones)
+    com_vers_epci = (
+        com_c.dropna(subset=["COM"]).set_index("COM")["EPCI"].astype(str)
+    )
 
     blocs = []
     for code_serm, nom in NOMS_SERM.items():
@@ -428,14 +474,17 @@ def top_od_communes_par_serm(
             _masque_interne_serm(df_od, code_serm)
             & (df_od["com_O"] != df_od["com_D"])
         )
-        top_int = (
+        agg_int = (
             df_od[m_int]
             .groupby(["com_O", "com_D"])["volume"]
             .sum()
             .reset_index()
-            .nlargest(top_n, "volume")
-            .assign(serm=code_serm, nom_serm=nom, typologie="interne_serm")
         )
+        agg_int["epci_O"] = agg_int["com_O"].map(com_vers_epci)
+        agg_int["epci_D"] = agg_int["com_D"].map(com_vers_epci)
+        top_int = _tops_par_epci(
+            agg_int, ["com_O", "com_D"], top_n, top_n_epci,
+        ).assign(serm=code_serm, nom_serm=nom, typologie="interne_serm")
         top_int = top_int.merge(
             com_c[["COM", "lon", "lat", "NOM_COM"]].rename(columns={
                 "COM": "com_O", "lon": "lon_O", "lat": "lat_O", "NOM_COM": "nom_O",
@@ -451,14 +500,16 @@ def top_od_communes_par_serm(
         # -- Flux emis : commune SERM -> EPCI externe (EPCI 0 exclu) ----------
         col_o, col_d = _colonnes_serm_flux(code_serm)
         m_emis = (df_od[col_o] == code_serm) & (df_od[col_d] != code_serm)
-        top_emis = (
+        agg_emis = (
             df_od[m_emis & (df_od["epci_D"].astype(str) != "0")]
             .groupby(["com_O", "epci_D"])["volume"]
             .sum()
             .reset_index()
-            .nlargest(top_n, "volume")
-            .assign(serm=code_serm, nom_serm=nom, typologie="echange_emis")
         )
+        agg_emis["epci_O"] = agg_emis["com_O"].map(com_vers_epci)
+        top_emis = _tops_par_epci(
+            agg_emis, ["com_O", "epci_D"], top_n, top_n_epci,
+        ).assign(serm=code_serm, nom_serm=nom, typologie="echange_emis")
         top_emis = top_emis.merge(
             com_c[["COM", "lon", "lat", "NOM_COM"]].rename(columns={
                 "COM": "com_O", "lon": "lon_O", "lat": "lat_O", "NOM_COM": "nom_O",
@@ -469,26 +520,28 @@ def top_od_communes_par_serm(
                 "EPCI": "epci_D", "lon": "lon_D", "lat": "lat_D",
             }), on="epci_D", how="left",
         )
-        top_emis = top_emis.rename(columns={"epci_D": "com_D"})
+        top_emis["com_D"] = top_emis["epci_D"]
         # nom_D sera rempli apres (necessaire pour avoir noms_epci disponible)
         blocs.append(top_emis)
 
         # -- Flux recus : EPCI externe -> commune SERM (EPCI 0 exclu) ---------
         m_recus = (df_od[col_d] == code_serm) & (df_od[col_o] != code_serm)
-        top_recus = (
+        agg_recus = (
             df_od[m_recus & (df_od["epci_O"].astype(str) != "0")]
             .groupby(["epci_O", "com_D"])["volume"]
             .sum()
             .reset_index()
-            .nlargest(top_n, "volume")
-            .assign(serm=code_serm, nom_serm=nom, typologie="echange_recus")
         )
+        agg_recus["epci_D"] = agg_recus["com_D"].map(com_vers_epci)
+        top_recus = _tops_par_epci(
+            agg_recus, ["epci_O", "com_D"], top_n, top_n_epci,
+        ).assign(serm=code_serm, nom_serm=nom, typologie="echange_recus")
         top_recus = top_recus.merge(
             epci_c[["EPCI", "lon", "lat"]].rename(columns={
                 "EPCI": "epci_O", "lon": "lon_O", "lat": "lat_O",
             }), on="epci_O", how="left",
         )
-        top_recus = top_recus.rename(columns={"epci_O": "com_O"})
+        top_recus["com_O"] = top_recus["epci_O"]
         # nom_O sera rempli apres
         top_recus = top_recus.merge(
             com_c[["COM", "lon", "lat", "NOM_COM"]].rename(columns={
@@ -499,7 +552,8 @@ def top_od_communes_par_serm(
 
     df_final = pd.concat(blocs, ignore_index=True)
     for col in ["nom_O", "nom_D", "com_O", "com_D",
-                "lon_O", "lat_O", "lon_D", "lat_D"]:
+                "lon_O", "lat_O", "lon_D", "lat_D",
+                "epci_O", "epci_D"]:
         if col not in df_final.columns:
             df_final[col] = None
     # nom_O / nom_D des entrees EPCI (flux emis/recus) sont a None ici ;
@@ -508,7 +562,7 @@ def top_od_communes_par_serm(
         "serm", "nom_serm", "typologie",
         "com_O", "nom_O", "lon_O", "lat_O",
         "com_D", "nom_D", "lon_D", "lat_D",
-        "volume",
+        "volume", "epci_O", "epci_D",
     ]]
 
 
@@ -555,6 +609,13 @@ def main(argv: Iterable[str] | None = None) -> int:
         "--top-n", type=int, default=TOP_N_DEFAUT,
         help=f"Nombre de flux top par SERM et par typologie (defaut {TOP_N_DEFAUT}).",
     )
+    parser.add_argument(
+        "--top-n-epci", type=int, default=TOP_N_EPCI_DEFAUT,
+        help=(
+            "Nombre de flux conserves par EPCI implique, en plus du top "
+            f"global (defaut {TOP_N_EPCI_DEFAUT}). 0 desactive."
+        ),
+    )
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args(list(argv) if argv is not None else None)
 
@@ -592,7 +653,9 @@ def main(argv: Iterable[str] | None = None) -> int:
     top_od.to_parquet(data / "top_od_vl_par_serm.parquet", index=False)
     LOG.info("Ecrit %s (%d lignes)", data / "top_od_vl_par_serm.parquet", len(top_od))
 
-    top_com = top_od_communes_par_serm(od, centroides, top_n=args.top_n)
+    top_com = top_od_communes_par_serm(
+        od, centroides, top_n=args.top_n, top_n_epci=args.top_n_epci,
+    )
     top_com = appliquer_noms_epci_top_od(top_com, noms_epci)
     top_com.to_parquet(data / "top_od_com_serm.parquet", index=False)
     LOG.info("Ecrit %s (%d lignes)", data / "top_od_com_serm.parquet", len(top_com))

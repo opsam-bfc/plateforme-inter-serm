@@ -427,6 +427,153 @@ def charger_top_od_communes() -> pd.DataFrame:
     return enrichir_noms_epci_flux_od(df)
 
 
+# ---------------------------------------------------------------------------
+# Filtrage des flux OD par territoire (EPCI ou commune)
+# ---------------------------------------------------------------------------
+
+def _cotes_epci(typologie: str) -> tuple[bool, bool]:
+    """Indique si (origine, destination) portent un code EPCI, non communal."""
+    if typologie == "echange_emis":
+        return False, True
+    if typologie == "echange_recus":
+        return True, False
+    return False, False
+
+
+def mapping_commune_epci() -> dict[str, str]:
+    """Correspondance code commune INSEE -> code EPCI (centroides du bundle)."""
+    try:
+        centro = charger_centroides_zones()
+    except FileNotFoundError:
+        return {}
+    if "COM" not in centro.columns or "EPCI" not in centro.columns:
+        return {}
+    sous = centro.dropna(subset=["COM", "EPCI"])
+    return dict(
+        zip(_code_epci_str(sous["COM"]), _code_epci_str(sous["EPCI"]))
+    )
+
+
+def enrichir_epci_flux_od(df: pd.DataFrame) -> pd.DataFrame:
+    """Ajoute ``epci_O`` / ``epci_D`` aux flux OD si le bundle ne les a pas.
+
+    Les bundles anterieurs a l'ajout du filtre par territoire ne portent
+    que les codes communes : l'EPCI de rattachement est alors deduit des
+    centroides de zones.
+    """
+    if df is None or df.empty:
+        return df
+    if "epci_O" in df.columns and "epci_D" in df.columns:
+        return df
+    mapping = mapping_commune_epci()
+    if not mapping or "typologie" not in df.columns:
+        return df
+
+    df = df.copy()
+    for indice, suffixe in enumerate(("O", "D")):
+        col_code = f"com_{suffixe}"
+        if col_code not in df.columns:
+            continue
+        codes = _code_epci_str(df[col_code])
+        deja_epci = (
+            df["typologie"]
+            .astype(str)
+            .map(lambda t, i=indice: _cotes_epci(t)[i])
+            .fillna(False)
+            .astype(bool)
+        )
+        df[f"epci_{suffixe}"] = codes.where(deja_epci, codes.map(mapping))
+    return df
+
+
+def territoires_flux_od(df: pd.DataFrame) -> pd.DataFrame:
+    """Territoires (EPCI et communes) presents dans un jeu de flux OD.
+
+    Colonnes : ``type`` (``epci`` / ``commune``), ``code``, ``nom``,
+    ``volume`` (somme des flux touchant le territoire).
+    """
+    colonnes = ["type", "code", "nom", "volume"]
+    if df is None or df.empty:
+        return pd.DataFrame(columns=colonnes)
+
+    df = enrichir_epci_flux_od(df)
+    noms_epci = mapping_noms_epci()
+    morceaux: list[pd.DataFrame] = []
+
+    for typologie, bloc in df.groupby("typologie"):
+        cote_o, cote_d = _cotes_epci(str(typologie))
+        for col_code, col_nom, est_epci in (
+            ("com_O", "nom_O", cote_o),
+            ("com_D", "nom_D", cote_d),
+        ):
+            if col_code not in bloc.columns:
+                continue
+            codes = _code_epci_str(bloc[col_code])
+            noms = (
+                bloc[col_nom].astype(str)
+                if col_nom in bloc.columns
+                else codes
+            )
+            morceaux.append(pd.DataFrame({
+                "type": "epci" if est_epci else "commune",
+                "code": codes.values,
+                "nom": noms.values,
+                "volume": bloc["volume"].values,
+            }))
+        # EPCI de rattachement des communes (flux internes notamment).
+        for col in ("epci_O", "epci_D"):
+            if col not in bloc.columns:
+                continue
+            codes = _code_epci_str(bloc[col])
+            morceaux.append(pd.DataFrame({
+                "type": "epci",
+                "code": codes.values,
+                "nom": codes.map(noms_epci).fillna(codes).values,
+                "volume": bloc["volume"].values,
+            }))
+
+    if not morceaux:
+        return pd.DataFrame(columns=colonnes)
+
+    tous = pd.concat(morceaux, ignore_index=True)
+    tous = tous[~tous["code"].isin(["0", "", "nan", "None"])]
+    tous = tous[tous["code"].notna()]
+    if tous.empty:
+        return pd.DataFrame(columns=colonnes)
+
+    agrege = (
+        tous.groupby(["type", "code"], as_index=False)
+        .agg(nom=("nom", "first"), volume=("volume", "sum"))
+        .sort_values("volume", ascending=False)
+        .reset_index(drop=True)
+    )
+    return agrege[colonnes]
+
+
+def filtrer_flux_od(
+    df: pd.DataFrame,
+    type_territoire: str | None = None,
+    code: str | None = None,
+) -> pd.DataFrame:
+    """Conserve les flux dont une extremite est le territoire demande."""
+    if df is None or df.empty or not type_territoire or not code:
+        return df
+
+    cible = str(code).strip()
+    df = enrichir_epci_flux_od(df)
+    colonnes = ["com_O", "com_D"]
+    if type_territoire == "epci":
+        # Les codes EPCI apparaissent aussi dans com_O / com_D pour les
+        # extremites externes des flux emis / recus.
+        colonnes = ["epci_O", "epci_D", "com_O", "com_D"]
+
+    masque = pd.Series(False, index=df.index)
+    for col in colonnes:
+        if col in df.columns:
+            masque |= _code_epci_str(df[col]) == cible
+    return df[masque]
+
+
 def charger_centroides_zones() -> pd.DataFrame:
     """Charge les centroides des zones OPSAM (lon/lat WGS84)."""
     chemin = fichier_data("centroides_zones.parquet")

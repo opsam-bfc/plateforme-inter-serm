@@ -54,6 +54,7 @@ from data_loader import (  # noqa: E402
     data_dir,
     definir_scenario,
     exporter_reseau_shapefile_zip,
+    filtrer_flux_od,
     info_serm,
     profil_distance_vl_pl,
     repartition_par_voie,
@@ -61,6 +62,7 @@ from data_loader import (  # noqa: E402
     scenario_actif,
     scenarios_avec_bundle,
     signature_bundle,
+    territoires_flux_od,
 )
 from visualizations import (  # noqa: E402
     METRIQUE_LABELS,
@@ -249,6 +251,8 @@ def _lignes_de_desir(
     seuil_pct: float,
     style_mapbox: str,
     signature: float,
+    filtre_type: str | None = None,
+    filtre_code: str | None = None,
 ):
     """Cache la figure lignes de desir (754 polygones communes = couteux)."""
     del signature
@@ -259,12 +263,24 @@ def _lignes_de_desir(
         top_od = charger_top_od_communes()
     except FileNotFoundError:
         top_od = charger_top_od_vl()
+    top_od = filtrer_flux_od(top_od, filtre_type, filtre_code)
     return lignes_de_desir(
         top_od, perimetres, style_mapbox,
         code_serm=code_serm, typologie=typologie,
         nb_max=nb_max, seuil_pct_max=float(seuil_pct),
         communes_gdf=communes_gdf, epci_gdf=epci_gdf,
     )
+
+
+@st.cache_data(show_spinner=False)
+def _territoires_flux(code_serm: int, typologie: str, signature: float):
+    """Territoires (EPCI / communes) filtrables pour un SERM et une typologie."""
+    del signature
+    top_od = charger_top_od_communes()
+    sous = top_od[
+        (top_od["serm"] == code_serm) & (top_od["typologie"] == typologie)
+    ]
+    return territoires_flux_od(sous)
 
 
 @st.cache_data(show_spinner="Chargement des limites communales...")
@@ -743,8 +759,38 @@ elif page == "Corridors & top flux OD":
             help="Supprimer les flux < N % du flux maximum affiche.",
         )
 
+    # --- Filtre par territoire (applique avant la troncature du top N) -------
+    _TOUS = "__tous__"
+    try:
+        territoires = _territoires_flux(code, typo, signature)
+    except Exception:
+        territoires = None
+
+    filtre_type: str | None = None
+    filtre_code: str | None = None
+    if territoires is not None and not territoires.empty:
+        libelles = {_TOUS: "Tous les territoires"}
+        for ligne in territoires.itertuples():
+            prefixe = "EPCI" if ligne.type == "epci" else "Commune"
+            libelles[f"{ligne.type}:{ligne.code}"] = (
+                f"{prefixe} — {ligne.nom}"
+            )
+        choix_territoire = st.selectbox(
+            "Filtrer par territoire (EPCI ou commune)",
+            list(libelles.keys()),
+            format_func=lambda cle: libelles[cle],
+            help=(
+                "Le filtre s'applique avant la limite « Nb de flux max » : "
+                "les flux d'un territoire à faibles volumes restent visibles."
+            ),
+            key=f"filtre_territoire_{code}_{typo}",
+        )
+        if choix_territoire != _TOUS:
+            filtre_type, filtre_code = choix_territoire.split(":", 1)
+
     fig_lignes = _lignes_de_desir(
-        code, typo, nb_max, float(seuil_pct), _style_mapbox(), signature
+        code, typo, nb_max, float(seuil_pct), _style_mapbox(), signature,
+        filtre_type, filtre_code,
     )
 
     st.plotly_chart(fig_lignes, use_container_width=True)
@@ -752,38 +798,60 @@ elif page == "Corridors & top flux OD":
     st.subheader(f"Top {nb_max} flux — {info_serm(code)['nom']} ({typo})")
     top_od_com = _top_od_communes(signature)
     try:
-        sous = top_od_com[
+        perimetre_typo = top_od_com[
             (top_od_com["serm"] == code) & (top_od_com["typologie"] == typo)
-        ].nlargest(nb_max, "volume").copy()
-        col_nom_O = "nom_O" if "nom_O" in sous.columns else "nom_com_O"
-        col_nom_D = "nom_D" if "nom_D" in sous.columns else "nom_com_D"
-        affichage = sous[[col_nom_O, col_nom_D, "volume"]].rename(columns={
-            col_nom_O: "Origine",
-            col_nom_D: "Destination",
-            "volume": "Volume VL/j",
-        })
-        v_max_tab = float(sous["volume"].max() or 1)
-        affichage["% du max"] = (
-            sous["volume"] / v_max_tab * 100
-        ).round(1).values
-        st.dataframe(
-            affichage, use_container_width=True, hide_index=True,
-            column_config={
-                "Volume VL/j": st.column_config.NumberColumn(format="%.0f"),
-                "% du max": st.column_config.NumberColumn(format="%.1f %%"),
-            },
-        )
-        col_dl, _ = st.columns([1, 3])
-        with col_dl:
-            csv_bytes = affichage.to_csv(
-                index=False, sep=";", encoding="utf-8-sig",
-            ).encode("utf-8-sig")
-            st.download_button(
-                ":material/download: Export CSV",
-                csv_bytes,
-                f"top_flux_{info_serm(code)['slug']}_{typo}.csv",
-                "text/csv",
+        ]
+        sous = filtrer_flux_od(
+            perimetre_typo, filtre_type, filtre_code,
+        ).nlargest(nb_max, "volume").copy()
+        if sous.empty:
+            seuil_bundle = _fmt_milliers(
+                float(perimetre_typo["volume"].min() or 0)
             )
+            st.info(
+                "Aucun flux de ce territoire dans le bundle pour cette "
+                f"typologie — le plus petit flux conservé vaut "
+                f"{seuil_bundle} VL/j. Les volumes agrégés restent visibles "
+                "page « Échanges inter-SERM & EPCI ». Pour conserver les "
+                "flux des EPCI à faibles volumes lors du prochain rebuild : "
+                "option `--top-n-epci` de `prepare_od_vl.py`."
+            )
+        else:
+            col_nom_O = "nom_O" if "nom_O" in sous.columns else "nom_com_O"
+            col_nom_D = "nom_D" if "nom_D" in sous.columns else "nom_com_D"
+            affichage = sous[[col_nom_O, col_nom_D, "volume"]].rename(
+                columns={
+                    col_nom_O: "Origine",
+                    col_nom_D: "Destination",
+                    "volume": "Volume VL/j",
+                }
+            )
+            v_max_tab = float(sous["volume"].max() or 1)
+            affichage["% du max"] = (
+                sous["volume"] / v_max_tab * 100
+            ).round(1).values
+            st.dataframe(
+                affichage, use_container_width=True, hide_index=True,
+                column_config={
+                    "Volume VL/j": st.column_config.NumberColumn(
+                        format="%.0f"
+                    ),
+                    "% du max": st.column_config.NumberColumn(
+                        format="%.1f %%"
+                    ),
+                },
+            )
+            col_dl, _ = st.columns([1, 3])
+            with col_dl:
+                csv_bytes = affichage.to_csv(
+                    index=False, sep=";", encoding="utf-8-sig",
+                ).encode("utf-8-sig")
+                st.download_button(
+                    ":material/download: Export CSV",
+                    csv_bytes,
+                    f"top_flux_{info_serm(code)['slug']}_{typo}.csv",
+                    "text/csv",
+                )
     except Exception as exc:
         st.info(f"Tableau indisponible : {exc}")
 

@@ -100,6 +100,15 @@ Le script orchestrateur enchaine :
 3. `prepare_reseau_serm.py` (intersection reseau / SERM)
 4. `prepare_od_vl.py` (agregats matrice OD VL)
 
+### Top flux OD et filtre par territoire
+
+`prepare_od_vl.py` conserve, par SERM et par typologie, les `--top-n` plus
+gros flux (defaut 300) **plus** les `--top-n-epci` plus gros flux de chaque
+EPCI implique (defaut 50). Sans cette seconde liste, un EPCI a faibles
+volumes (ex. CC Arbois-Poligny-Salins dans le SERM Bisontin) n'apparait dans
+aucun couple du top global et le filtre « Filtrer par territoire » de la page
+*Corridors* ne renvoie aucun flux.
+
 ## Variables d'environnement
 
 | Variable                | Defaut                                                                                                                | Role                                  |
