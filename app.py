@@ -54,7 +54,6 @@ from data_loader import (  # noqa: E402
     data_dir,
     definir_scenario,
     exporter_reseau_shapefile_zip,
-    filtrer_flux_od,
     flux_od_corridors,
     info_serm,
     profil_distance_vl_pl,
