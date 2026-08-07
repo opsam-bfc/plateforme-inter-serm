@@ -211,8 +211,9 @@ def carte_comptages_horaires(
             ) if c in gares.columns),
             gares.columns[0],
         )
-        lats_g = gares.geometry.y.tolist()
-        lons_g = gares.geometry.x.tolist()
+        centroides_g = gares.geometry.centroid
+        lats_g = centroides_g.y.tolist()
+        lons_g = centroides_g.x.tolist()
         noms_g = gares[col_nom].tolist()
         hover_g = [f"<b>{n}</b><br>Gare SNCF" for n in noms_g]
         fig.add_trace(go.Scattermapbox(
