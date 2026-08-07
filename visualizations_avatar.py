@@ -220,8 +220,7 @@ def carte_comptages_horaires(
             lat=lats_g, lon=lons_g,
             mode="markers",
             marker=go.scattermapbox.Marker(
-                size=11, color="#1565C0", opacity=0.9,
-                symbol="rail",
+                size=14, color="#1565C0", opacity=0.95,
             ),
             text=hover_g,
             hoverinfo="text",
