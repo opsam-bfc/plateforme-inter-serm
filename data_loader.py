@@ -1031,16 +1031,18 @@ def charger_gares_locales() -> gpd.GeoDataFrame:
     """Charge le shapefile IGN des gares ferroviaires BFC.
 
     Fichier : ``data/TC/r_gares_ferroviaire_r_27.shp`` (Lambert 93).
+    Le chemin est toujours relatif a la racine du projet (independant
+    de la variable SERM_DATA_DIR).
     Reprojecte automatiquement en WGS84 (EPSG:4326).
 
     Returns:
-        GeoDataFrame avec colonnes utiles : intitule_p (nom), commune,
+        GeoDataFrame avec colonnes : intitule_p (nom), commune,
         code_gare, geometry (Point WGS84).
 
     Raises:
         FileNotFoundError: Si le shapefile est absent.
     """
-    chemin = fichier_data("TC/r_gares_ferroviaire_r_27.shp")
+    chemin = _ROOT / "data" / "TC" / "r_gares_ferroviaire_r_27.shp"
     if not chemin.is_file():
         raise FileNotFoundError(
             f"Shapefile gares introuvable : {chemin}."

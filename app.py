@@ -980,7 +980,7 @@ elif page == "Comptages horaires":
     def _mobigo_serm(code: int, sig: float):
         del sig
         try:
-            chemin = data_dir() / "TC" / "arrets_mobigo_bfc.gpkg"
+            chemin = Path(__file__).parent / "data" / "TC" / "arrets_mobigo_bfc.gpkg"
             mob = gpd.read_file(chemin)
             if mob.crs is None or mob.crs.to_epsg() != 4326:
                 mob = mob.to_crs(4326)
