@@ -78,7 +78,7 @@ from visualizations import (  # noqa: E402
     sankey_vl_pl_par_voie,
 )
 from visualizations_avatar import (  # noqa: E402
-    carte_stations_avatar,
+    carte_comptages_horaires,
     profil_horaire_avatar,
 )
 from pdf_export import (  # noqa: E402
@@ -380,7 +380,7 @@ with st.sidebar:
         "Socle par SERM": "search",
         "Corridors & top flux OD": "route",
         "Echanges inter-SERM & EPCI": "compare_arrows",
-        "Comptages AVATAR": "sensors",
+        "Comptages horaires": "sensors",
         "Contexte enrichi (datagouv)": "hub",
         "Reglages": "settings",
     }
@@ -911,37 +911,31 @@ elif page == "Echanges inter-SERM & EPCI":
 
 
 # =========================================================================
-# Page 5 : Comptages AVATAR
+# Page 5 : Comptages horaires
 # =========================================================================
 
-elif page == "Comptages AVATAR":
+elif page == "Comptages horaires":
     import geopandas as gpd
     from shapely.geometry import Point
 
-    _page_header(
-        "Comptages horaires AVATAR — DIR Est & DIR Centre-Est",
-        "Profils temporels horaires moyens (0–23 h) des stations de "
-        "comptage permanentes sur le réseau national en BFC. "
-        "Données : API AVATAR Cerema.",
+    st.header("Comptages horaires — Réseau routier & Transports collectifs")
+    st.caption(
+        "Carte multicouche : trafic VL sur le réseau routier, gares SNCF, "
+        "arrêts Mobigo et stations de comptage permanent (DIR Est & "
+        "DIR Centre-Est). Cliquer sur une station orange pour afficher "
+        "son profil horaire moyen."
     )
 
-    # ── Chargement du bundle AVATAR ──────────────────────────────────────
+    # ── Chargement stations AVATAR ───────────────────────────────────────
     try:
         stations_all = charger_stations_avatar()
         profils_all = charger_profils_avatar()
     except FileNotFoundError as exc:
-        st.warning(
-            f"Bundle AVATAR introuvable : {exc}\n\n"
-            "Lancer d'abord :\n"
-            "```\n"
-            "python scripts/prepare_avatar_stations.py "
-            "--metadonnees sortie_avatar_bfc/metadonnees_stations_bfc.csv "
-            "--horaire sortie_avatar_bfc/horaire_consolide_2026.csv\n"
-            "```"
-        )
-        st.stop()
+        st.warning(str(exc))
+        stations_all = None
+        profils_all = None
 
-    # ── Selecteur SERM (identique aux autres pages) ──────────────────────
+    # ── Selecteur SERM ───────────────────────────────────────────────────
     code_serm_av = st.selectbox(
         "SERM",
         codes_zones(inclure_hors_serm=False),
@@ -952,9 +946,56 @@ elif page == "Comptages AVATAR":
     peri_serm_av = perimetres_gdf[
         perimetres_gdf["code_serm"] == code_serm_av
     ].copy()
+    inf_serm_av = SERM_INFO[code_serm_av]
 
-    # Filtrage spatial : stations dans le perimetre du SERM selectionne
-    if not peri_serm_av.empty:
+    # ── Reseau routier (meme donnee que Socle par SERM) ──────────────────
+    @st.cache_data(show_spinner="Chargement du reseau...", max_entries=3)
+    def _reseau_av(slug: str, sig: float):
+        del sig
+        return charger_reseau_serm(slug)
+
+    reseau_av = _reseau_av(inf_serm_av["slug"], signature)
+
+    # ── Gares SNCF (depuis datagouv_context) ─────────────────────────────
+    @st.cache_data(show_spinner="Chargement des gares SNCF...", max_entries=1)
+    def _gares_serm_av(code: int, sig: float):
+        del sig
+        try:
+            from datagouv_context import charger_gares_sncf
+            gares_all = charger_gares_sncf()
+            if gares_all.empty:
+                return gares_all
+            peri = perimetres_gdf[perimetres_gdf["code_serm"] == code].to_crs(4326)
+            if peri.empty:
+                return gares_all
+            union = peri.union_all()
+            return gares_all[gares_all.geometry.within(union)].copy()
+        except Exception:
+            return gpd.GeoDataFrame()
+
+    gares_av = _gares_serm_av(code_serm_av, signature)
+
+    # ── Arrets Mobigo (filtres sur le SERM) ──────────────────────────────
+    @st.cache_data(show_spinner="Chargement des arrets Mobigo...", max_entries=3)
+    def _mobigo_serm(code: int, sig: float):
+        del sig
+        try:
+            chemin = data_dir() / "TC" / "arrets_mobigo_bfc.gpkg"
+            mob = gpd.read_file(chemin)
+            if mob.crs is None or mob.crs.to_epsg() != 4326:
+                mob = mob.to_crs(4326)
+            peri = perimetres_gdf[perimetres_gdf["code_serm"] == code].to_crs(4326)
+            if peri.empty:
+                return mob
+            union = peri.union_all()
+            return mob[mob.geometry.within(union)].copy()
+        except Exception:
+            return gpd.GeoDataFrame()
+
+    mobigo_av = _mobigo_serm(code_serm_av, signature)
+
+    # ── Filtrage stations AVATAR sur le SERM ─────────────────────────────
+    if stations_all is not None and not peri_serm_av.empty:
         union_serm = peri_serm_av.to_crs(4326).union_all()
         mask_serm = stations_all.apply(
             lambda r: Point(r["longitude"], r["latitude"]).within(union_serm),
@@ -962,23 +1003,29 @@ elif page == "Comptages AVATAR":
         )
         stations_serm = stations_all[mask_serm].copy()
     else:
-        stations_serm = stations_all.copy()
+        stations_serm = pd.DataFrame()
 
     st.caption(
-        f"{len(stations_serm)} station(s) avec donnees dans ce SERM — "
-        f"cliquer sur un point pour afficher son profil horaire."
+        f"**{len(stations_serm)}** station(s) DIR  •  "
+        f"**{len(gares_av)}** gare(s) SNCF  •  "
+        f"**{len(mobigo_av)}** arrêt(s) Mobigo"
     )
 
-    # ── Etat de la station selectionnee (session state) ──────────────────
+    # ── Etat de la station selectionnee ──────────────────────────────────
     if "avatar_station_id" not in st.session_state:
         st.session_state["avatar_station_id"] = None
 
-    # ── Carte des stations ───────────────────────────────────────────────
-    fig_carte_av = carte_stations_avatar(
-        stations_serm,
+    # ── Carte multicouche ────────────────────────────────────────────────
+    fig_carte_av = carte_comptages_horaires(
+        stations_serm if not stations_serm.empty else pd.DataFrame(
+            columns=["count_point_id", "latitude", "longitude"]
+        ),
         peri_serm_av,
         style_mapbox=_style_mapbox(),
         station_id_sel=st.session_state["avatar_station_id"],
+        reseau_gdf=reseau_av,
+        gares_gdf=gares_av if not gares_av.empty else None,
+        mobigo_gdf=mobigo_av if not mobigo_av.empty else None,
     )
     ev = st.plotly_chart(
         fig_carte_av,
