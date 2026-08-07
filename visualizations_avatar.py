@@ -206,8 +206,9 @@ def carte_comptages_horaires(
         if gares.crs is not None and gares.crs.to_epsg() != 4326:
             gares = gares.to_crs(4326)
         col_nom = next(
-            (c for c in ("libelle", "nom", "nom_gare", "stop_name", "name")
-             if c in gares.columns),
+            (c for c in (
+                "intitule_p", "libelle", "nom", "nom_gare", "stop_name", "name"
+            ) if c in gares.columns),
             gares.columns[0],
         )
         lats_g = gares.geometry.y.tolist()

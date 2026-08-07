@@ -45,6 +45,7 @@ from data_loader import (  # noqa: E402
     charger_limites_epci,
     charger_matrice_inter_serm,
     charger_perimetres_serm,
+    charger_gares_locales,
     charger_profils_avatar,
     charger_reseau_serm,
     charger_stations_avatar,
@@ -956,20 +957,23 @@ elif page == "Comptages horaires":
 
     reseau_av = _reseau_av(inf_serm_av["slug"], signature)
 
-    # ── Gares SNCF (depuis datagouv_context, deja cachees) ───────────────
-    try:
-        from datagouv_context import charger_gares_sncf
-        gares_all_av = charger_gares_sncf()
-        if not gares_all_av.empty and not peri_serm_av.empty:
-            _union_peri_av = peri_serm_av.to_crs(4326).union_all()
-            gares_av = gares_all_av[
-                gares_all_av.geometry.within(_union_peri_av)
-            ].copy()
-        else:
-            gares_av = gares_all_av
-    except Exception as _e_gares:
-        st.caption(f"Gares SNCF indisponibles : {_e_gares}")
-        gares_av = gpd.GeoDataFrame()
+    # ── Gares ferroviaires (shapefile IGN local, filtre sur le SERM) ─────
+    @st.cache_data(show_spinner="Chargement des gares...", max_entries=3)
+    def _gares_serm(code: int, sig: float):
+        del sig
+        try:
+            from data_loader import charger_gares_locales
+            gares_all = charger_gares_locales()
+            peri = perimetres_gdf[perimetres_gdf["code_serm"] == code].to_crs(4326)
+            if peri.empty:
+                return gares_all
+            union = peri.union_all()
+            return gares_all[gares_all.geometry.within(union)].copy()
+        except Exception as _e:
+            st.caption(f"Gares indisponibles : {_e}")
+            return gpd.GeoDataFrame()
+
+    gares_av = _gares_serm(code_serm_av, signature)
 
     # ── Arrets Mobigo (filtres sur le SERM) ──────────────────────────────
     @st.cache_data(show_spinner="Chargement des arrets Mobigo...", max_entries=3)

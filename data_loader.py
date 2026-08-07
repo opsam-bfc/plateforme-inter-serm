@@ -1027,6 +1027,30 @@ def info_serm(code: int) -> dict:
 # Comptages AVATAR (DIR Est / DIR Centre-Est)
 # ---------------------------------------------------------------------------
 
+def charger_gares_locales() -> gpd.GeoDataFrame:
+    """Charge le shapefile IGN des gares ferroviaires BFC.
+
+    Fichier : ``data/TC/r_gares_ferroviaire_r_27.shp`` (Lambert 93).
+    Reprojecte automatiquement en WGS84 (EPSG:4326).
+
+    Returns:
+        GeoDataFrame avec colonnes utiles : intitule_p (nom), commune,
+        code_gare, geometry (Point WGS84).
+
+    Raises:
+        FileNotFoundError: Si le shapefile est absent.
+    """
+    chemin = fichier_data("TC/r_gares_ferroviaire_r_27.shp")
+    if not chemin.is_file():
+        raise FileNotFoundError(
+            f"Shapefile gares introuvable : {chemin}."
+        )
+    gdf = gpd.read_file(chemin)
+    if gdf.crs is None or gdf.crs.to_epsg() != 4326:
+        gdf = gdf.to_crs(4326)
+    return gdf
+
+
 def charger_stations_avatar() -> pd.DataFrame:
     """Charge ``data/avatar/metadonnees_stations_bfc.csv`` (stations).
 
