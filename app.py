@@ -127,10 +127,11 @@ def _style_mapbox() -> str:
     return "carto-positron" if _get_mapbox_token() else "open-street-map"
 
 
+from formatting import fmt_nombre  # noqa: E402
+
+
 def _fmt_milliers(val) -> str:
-    if pd.isna(val):
-        return "-"
-    return f"{int(round(float(val))):,}".replace(",", " ")
+    return fmt_nombre(val, decimales=0)
 
 
 def _page_header(titre: str, sous_titre: str | None = None) -> None:
@@ -380,28 +381,28 @@ with st.sidebar:
         "Vue d'ensemble": "bar_chart",
         "Socle par SERM": "search",
         "Corridors & top flux OD": "route",
-        "Echanges inter-SERM & EPCI": "compare_arrows",
+        "Échanges inter-SERM & EPCI": "compare_arrows",
         "Comptages horaires": "sensors",
         "Contexte enrichi (datagouv)": "hub",
-        "Reglages": "settings",
+        "Réglages": "settings",
     }
     page = st.radio(
         "Navigation",
         list(PAGES.keys()),
         index=0,
         captions=[
-            "KPI compares + carte BFC",
+            "KPI comparés + carte BFC",
             "Zoom sur un SERM (carte, Sankey, distances)",
-            "Top flux VL internes / emis / recus",
+            "Top flux VL internes / émis / reçus",
             "Matrices OD inter-SERM et par EPCI",
             "Profils horaires DIR Est & DIR Centre-Est",
-            "Donnees contextuelles INSEE / SNCF",
-            "Perimetres, regeneration du bundle",
+            "Données contextuelles INSEE / SNCF",
+            "Périmètres, régénération du bundle",
         ],
     )
 
     st.divider()
-    with st.expander("Bundle de donnees", expanded=False):
+    with st.expander("Bundle de données", expanded=False):
         st.code(str(data_dir()), language=None)
         st.caption(f"Signature (timestamps cumules) : {signature:.0f}")
 
@@ -457,7 +458,7 @@ if page == "Vue d'ensemble":
     k1.metric("VKM VL (k km/j)", _fmt_milliers(sous["VKM_VL_milliers"].sum()))
     k2.metric("% Transit moyen", f"{sous['pct_transit'].mean():.1f} %")
     k3.metric("% Interne moyen", f"{sous['pct_interne'].mean():.1f} %")
-    k4.metric("Reseau cumule (km)", _fmt_milliers(sous["DISTANCE"].sum()))
+    k4.metric("Réseau cumulé (km)", _fmt_milliers(sous["DISTANCE"].sum()))
 
     st.markdown("")
     col_sel, _ = st.columns([1, 3])
@@ -483,7 +484,7 @@ if page == "Vue d'ensemble":
     )
     st.plotly_chart(fig_c, use_container_width=True)
 
-    st.subheader("Tableau de synthese")
+    st.subheader("Tableau de synthèse")
     cols = [
         "nom_serm", "VKM_VL_milliers",
         "pct_transit", "pct_echange", "pct_interne",
@@ -494,18 +495,22 @@ if page == "Vue d'ensemble":
         "nom_serm": "SERM",
         "VKM_VL_milliers": "VKM VL (k km/j)",
         "pct_transit": "% Transit",
-        "pct_echange": "% Echange",
+        "pct_echange": "% Échange",
         "pct_interne": "% Interne",
         "pct_longue_distance": "% Long. dist.",
-        "DISTANCE": "Reseau (km)",
+        "DISTANCE": "Réseau (km)",
     })
-    col_cfg = {
-        c: st.column_config.NumberColumn(format="%.1f")
-        for c in df_tab.columns if c not in ("SERM",)
-    }
-    col_cfg["Reseau (km)"] = st.column_config.NumberColumn(format="%d")
+    df_aff = df_tab.copy()
+    df_aff["VKM VL (k km/j)"] = df_aff["VKM VL (k km/j)"].apply(
+        lambda v: fmt_nombre(v, 1)
+    )
+    df_aff["Réseau (km)"] = df_aff["Réseau (km)"].apply(
+        lambda v: fmt_nombre(v, 0)
+    )
+    for col in ("% Transit", "% Échange", "% Interne", "% Long. dist."):
+        df_aff[col] = df_aff[col].apply(lambda v: fmt_nombre(v, 1))
     st.dataframe(
-        df_tab, use_container_width=True, hide_index=True, column_config=col_cfg
+        df_aff, use_container_width=True, hide_index=True,
     )
 
     st.subheader("Comparatifs inter-SERM")
@@ -538,7 +543,7 @@ if page == "Vue d'ensemble":
     with col_e1:
         csv_bytes = df_tab.to_csv(index=False, sep=";").encode("utf-8-sig")
         st.download_button(
-            ":material/download: Exporter la synthese (CSV)",
+            ":material/download: Exporter la synthèse (CSV)",
             csv_bytes,
             "synthese_inter_serm.csv",
             "text/csv",
@@ -600,7 +605,7 @@ elif page == "Socle par SERM":
 
     st.divider()
 
-    st.subheader("Carte de trafic sur le reseau du SERM")
+    st.subheader("Carte de trafic sur le réseau du SERM")
     st.caption(
         "Les couches Interne / Échange / Transit sont recalées sur le TMJA "
         "consolidé (`TMJA_P`) via le ratio `VOL_Mn_X / VOLUME` issu de "
@@ -742,8 +747,8 @@ elif page == "Corridors & top flux OD":
             ["interne_serm", "echange_emis", "echange_recus"],
             format_func=lambda x: {
                 "interne_serm": "Flux internes (communes)",
-                "echange_emis": "Flux emis vers EPCI ext.",
-                "echange_recus": "Flux recus depuis EPCI ext.",
+                "echange_emis": "Flux émis vers EPCI ext.",
+                "echange_recus": "Flux reçus depuis EPCI ext.",
             }[x],
         )
     with col_nb:
@@ -846,7 +851,7 @@ elif page == "Corridors & top flux OD":
 # Page 4 : Echanges inter-SERM & EPCI
 # =========================================================================
 
-elif page == "Echanges inter-SERM & EPCI":
+elif page == "Échanges inter-SERM & EPCI":
     _page_header(
         "Échanges entre SERM et entre EPCI",
         "Matrices origin–destination inter-SERM et focus sur les échanges "
@@ -856,7 +861,7 @@ elif page == "Echanges inter-SERM & EPCI":
     matrice = _matrice(signature)
     st.plotly_chart(heatmap_inter_serm(matrice), use_container_width=True)
 
-    st.subheader("Echanges EPCI x EPCI au sein d'un SERM")
+    st.subheader("Échanges EPCI × EPCI au sein d'un SERM")
     col_serm, col_typo, col_n = st.columns([1, 1, 1])
     with col_serm:
         code = st.selectbox(
@@ -869,8 +874,8 @@ elif page == "Echanges inter-SERM & EPCI":
             "Typologie",
             ["interne_serm", "echange_serm"],
             format_func=lambda x: {
-                "interne_serm": "Echanges internes (EPCI dans le SERM)",
-                "echange_serm": "Echanges avec EPCI hors SERM",
+                "interne_serm": "Échanges internes (EPCI dans le SERM)",
+                "echange_serm": "Échanges avec EPCI hors SERM",
             }[x],
         )
     with col_n:
@@ -1056,7 +1061,7 @@ elif page == "Comptages horaires":
             st.plotly_chart(fig_profil, use_container_width=True)
 
             # Tableau de donnees brutes
-            with st.expander("Donnees brutes du profil (CSV)"):
+            with st.expander("Données brutes du profil (CSV)"):
                 profil_station = profils_all[
                     profils_all["count_point_id"] == station_id_av
                 ].sort_values("heure").copy()
@@ -1066,7 +1071,7 @@ elif page == "Comptages horaires":
                 st.dataframe(
                     profil_station.rename(columns={
                         "heure": "Heure",
-                        "flow_moy": "Debit moy. (veh/h)",
+                        "flow_moy": "Débit moy. (veh/h)",
                         "pl_pct_moy": "Part PL (%)",
                         "vitesse_moy": "Vitesse moy. (km/h)",
                     }).drop(columns=["count_point_id"], errors="ignore"),
@@ -1112,7 +1117,7 @@ elif page == "Contexte enrichi (datagouv)":
 # Page 6 : Reglages
 # =========================================================================
 
-elif page == "Reglages":
+elif page == "Réglages":
     _page_header(
         "Réglages — périmètres SERM et bundle de données",
         "Mettre à jour les périmètres, régénérer le bundle précalculé "
@@ -1130,9 +1135,9 @@ elif page == "Reglages":
         "1. Modifier le fichier "
         "`lookup_dep_com_epci_macrozone.csv` "
         "(colonnes `M1` et `M2`) ;\n"
-        "2. Mettre a jour la variable d'environnement "
-        "`SERM_LOOKUP_CSV` si necessaire ;\n"
-        "3. Regenerer le bundle du scenario "
+        "2. Mettre à jour la variable d'environnement "
+        "`SERM_LOOKUP_CSV` si nécessaire ;\n"
+        "3. Régénérer le bundle du scénario "
         f"**{scenario_actif()}** (commande ci-dessous).\n"
     )
 
@@ -1171,16 +1176,16 @@ elif page == "Reglages":
     st.divider()
     st.subheader("Export des livrables par SERM")
     st.caption(
-        "Genere un dossier structure (CSV, GeoJSON, GPKG) avec une note "
+        "Génère un dossier structuré (CSV, GeoJSON, GPKG) avec une note "
         "explicative par fichier, en dehors de la plateforme. "
         "Commande : `python scripts/export_livrables_par_serm.py --zip`"
     )
     col_exp1, col_exp2 = st.columns(2)
     with col_exp1:
-        faire_zip = st.checkbox("Creer une archive ZIP", value=False)
+        faire_zip = st.checkbox("Créer une archive ZIP", value=False)
     with col_exp2:
         effacer_export = st.checkbox(
-            "Reinitialiser le dossier d'export", value=False,
+            "Réinitialiser le dossier d'export", value=False,
         )
     if st.button(":material/folder_zip: Exporter les livrables par SERM"):
         racine = Path(__file__).resolve().parent
@@ -1201,20 +1206,20 @@ elif page == "Reglages":
                 )
                 st.code(result.stdout + "\n" + result.stderr, language="text")
                 if result.returncode == 0:
-                    st.success("Export termine. Voir le chemin dans les logs.")
+                    st.success("Export terminé. Voir le chemin dans les logs.")
                 else:
-                    st.error(f"Echec export (code {result.returncode}).")
+                    st.error(f"Échec export (code {result.returncode}).")
             except Exception as exc:
                 st.error(f"Erreur : {exc}")
 
     st.divider()
-    st.subheader("Lancer la regeneration du bundle")
+    st.subheader("Lancer la régénération du bundle")
     st.caption(
-        f"Equivalent shell : `python scripts/rebuild_for_new_perimeter.py "
+        f"Équivalent shell : `python scripts/rebuild_for_new_perimeter.py "
         f"--scenario {scenario_actif()} --data-dir data/{scenario_actif()}`. "
-        "Cette operation peut prendre plusieurs minutes (intersection reseau)."
+        "Cette opération peut prendre plusieurs minutes (intersection réseau)."
     )
-    if st.button(":material/refresh: Lancer la regeneration"):
+    if st.button(":material/refresh: Lancer la régénération"):
         racine = Path(__file__).resolve().parent
         cmd = [
             sys.executable,
@@ -1231,9 +1236,9 @@ elif page == "Reglages":
                 )
                 st.code(result.stdout + "\n" + result.stderr, language="text")
                 if result.returncode == 0:
-                    st.success("Bundle regenere avec succes.")
+                    st.success("Bundle régénéré avec succès.")
                     st.cache_data.clear()
                 else:
-                    st.error(f"Echec (code retour {result.returncode}).")
+                    st.error(f"Échec (code retour {result.returncode}).")
             except Exception as exc:
                 st.error(f"Erreur : {exc}")

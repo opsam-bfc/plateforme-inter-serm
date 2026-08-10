@@ -26,6 +26,7 @@ from data_loader import (
     TYPES_VOIE_LABELS,
     info_serm,
 )
+from formatting import fmt_nombre
 
 # ---------------------------------------------------------------------------
 # Palette / utilitaires
@@ -165,6 +166,10 @@ def carte_vue_ensemble(
         how="left",
         suffixes=("", "_metr"),
     )
+    gdf = gdf.copy()
+    gdf["_valeur_affichee"] = gdf[indicateur].apply(
+        lambda v: fmt_nombre(v, 1)
+    )
     geojson = json.loads(gdf.to_json())
 
     fig = px.choropleth_mapbox(
@@ -174,12 +179,20 @@ def carte_vue_ensemble(
         color=indicateur,
         color_continuous_scale="Viridis",
         hover_name="nom_serm",
-        hover_data={indicateur: ":,.1f"},
         opacity=0.55,
         center={"lat": 47.2, "lon": 5.0},
         zoom=6.2,
     )
-    fig.update_traces(marker_line_width=2, marker_line_color="#0E2A47")
+    fig.update_traces(
+        marker_line_width=2,
+        marker_line_color="#0E2A47",
+        hovertemplate=(
+            "<b>%{hovertext}</b><br>"
+            f"{libelle_indicateur or indicateur}: "
+            "%{customdata[0]}<extra></extra>"
+        ),
+        customdata=gdf[["_valeur_affichee"]].values,
+    )
 
     if libelle_indicateur:
         fig.update_coloraxes(colorbar_title=libelle_indicateur)
@@ -264,7 +277,7 @@ def _coords_lignes(
                     label = (
                         f"{row.get('CL_ADMIN', '')} | "
                         f"{METRIQUE_LABELS.get(metrique, metrique)}: "
-                        f"{val:,.0f}"
+                        f"{fmt_nombre(val, 0)}"
                     )
                     part_col = _PART_ASSOCIEE.get(metrique)
                     if (
@@ -388,7 +401,7 @@ def carte_trafic_serm(
             if _est_metrique_part(metrique):
                 nom_classe = f"{seuil_bas:.1f} – {seuil_haut:.1f} %"
             else:
-                nom_classe = f"{seuil_bas:,.0f} – {seuil_haut:,.0f}"
+                nom_classe = f"{fmt_nombre(seuil_bas, 0)} – {fmt_nombre(seuil_haut, 0)}"
             fig.add_trace(
                 go.Scattermapbox(
                     lat=lats,
@@ -507,7 +520,7 @@ def sankey_vl_pl_par_voie(df_serm: pd.DataFrame, titre: str) -> go.Figure:
                 sources.append(index[libelle_t])
                 targets.append(index[libelle_f])
                 values.append(float(total))
-                labels.append(f"{libelle_t} -> {libelle_f}: {total:,.0f}")
+                labels.append(f"{libelle_t} -> {libelle_f}: {fmt_nombre(total, 0)}")
     # Flux -> VL / PL
     for libelle_f, f in flux:
         vl = df_serm[f"VKM_VL_{f}"].sum() if f"VKM_VL_{f}" in df_serm.columns else 0
@@ -516,12 +529,12 @@ def sankey_vl_pl_par_voie(df_serm: pd.DataFrame, titre: str) -> go.Figure:
             sources.append(index[libelle_f])
             targets.append(index["VL"])
             values.append(float(vl))
-            labels.append(f"{libelle_f} -> VL: {vl:,.0f}")
+            labels.append(f"{libelle_f} -> VL: {fmt_nombre(vl, 0)}")
         if pl > 0:
             sources.append(index[libelle_f])
             targets.append(index["PL"])
             values.append(float(pl))
-            labels.append(f"{libelle_f} -> PL: {pl:,.0f}")
+            labels.append(f"{libelle_f} -> PL: {fmt_nombre(pl, 0)}")
 
     fig = go.Figure(
         go.Sankey(
@@ -654,9 +667,12 @@ def heatmap_inter_serm(matrice: pd.DataFrame) -> go.Figure:
             y=list(pivot.index),
             colorscale="Blues",
             colorbar=dict(title="Volume VL/j"),
-            text=[[f"{int(v):,}".replace(",", " ") for v in row] for row in pivot.values],
+            text=[[fmt_nombre(v, 0) for v in row] for row in pivot.values],
             texttemplate="%{text}",
-            hovertemplate="O: %{y}<br>D: %{x}<br>Volume: %{z:,.0f}<extra></extra>",
+            customdata=[[fmt_nombre(v, 0) for v in row] for row in pivot.values],
+            hovertemplate=(
+                "O: %{y}<br>D: %{x}<br>Volume: %{customdata} VL/j<extra></extra>"
+            ),
         )
     )
     fig.update_layout(
@@ -1190,9 +1206,9 @@ def lignes_de_desir(
         nom_d = r.get(col_nom_D) or "?"
         hover = (
             f"<b>{nom_o}</b> → <b>{nom_d}</b>"
-            f"<br>Volume VL/j : <b>{v:,.0f}</b>"
+            f"<br>Volume VL/j : <b>{fmt_nombre(v, 0)}</b>"
             f"<br>{v / v_max * 100:.1f} % du flux max"
-        ).replace(",", "\u202f")
+        )
 
         fig.add_trace(
             go.Scattermap(
@@ -1253,7 +1269,7 @@ def barres_comparatives_serm(
         go.Bar(
             x=sous["nom_serm"], y=sous[indicateur],
             marker_color=sous["couleur"],
-            text=[f"{v:,.1f}" for v in sous[indicateur]],
+            text=[fmt_nombre(v, 1) for v in sous[indicateur]],
             textposition="outside",
         )
     )
@@ -1343,11 +1359,10 @@ def heatmap_epci_x_epci(
             zmin=zmin,
             zmax=zmax,
             colorbar=dict(title="VL/j"),
-            # customdata transporte les valeurs reelles pour le hover
-            customdata=z_full,
+            customdata=[[fmt_nombre(v, 0) for v in row] for row in z_full],
             hovertemplate=(
                 "Origine : %{y}<br>Destination : %{x}"
-                "<br>Volume : %{customdata:,.0f} VL/j<extra></extra>"
+                "<br>Volume : %{customdata} VL/j<extra></extra>"
             ),
         )
     )
@@ -1368,7 +1383,7 @@ def heatmap_epci_x_epci(
         # Valeur du flux interne inscrite dans la cellule
         fig.add_annotation(
             x=cols[j], y=rows[i],
-            text=f"{val:,.0f}",
+            text=fmt_nombre(val, 0),
             showarrow=False,
             font=dict(size=8, color="#424242"),
             xref="x", yref="y",

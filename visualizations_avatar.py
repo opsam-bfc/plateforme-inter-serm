@@ -20,6 +20,8 @@ from __future__ import annotations
 import pandas as pd
 import plotly.graph_objects as go
 
+from formatting import fmt_nombre
+
 # ---------------------------------------------------------------------------
 # Helpers reseau routier
 # ---------------------------------------------------------------------------
@@ -55,7 +57,7 @@ def _coords_lignes_reseau(gdf) -> tuple[list, list, list]:
             lats.extend(c[1] for c in coords)
             lons.extend(c[0] for c in coords)
             val = row.get("VL_jour") or row.get("TMJA_P") or 0
-            textes.extend([f"{val:,.0f} VL/j"] * len(coords))
+            textes.extend([f"{fmt_nombre(val, 0)} VL/j"] * len(coords))
             lats.append(None)
             lons.append(None)
             textes.append(None)
@@ -248,7 +250,7 @@ def carte_comptages_horaires(
                 f"Route : {route}"
                 + (f" ({direction})" if direction else "")
                 + f"<br>{operateur}"
-                + f"<br>{nb_h:,} heures disponibles"
+                + f"<br>{fmt_nombre(nb_h, 0)} heures disponibles"
                 + "<br><i>Cliquer pour le profil horaire</i>"
             )
             custom.append([cp_id, nom, operateur, route])
@@ -377,7 +379,10 @@ def profil_horaire_avatar(
         fill="tozeroy", fillcolor="rgba(245,124,0,0.15)",
         marker=dict(size=5, color="#F57C00"),
         name="Débit",
-        hovertemplate="%{x}h00 → %{y:.0f} veh/h<extra></extra>",
+        customdata=[
+            fmt_nombre(v, 0) for v in profil["flow_moy"].round(1).tolist()
+        ],
+        hovertemplate="%{x}h00 → %{customdata} veh/h<extra></extra>",
     ), row=1, col=1)
 
     row_courant = 2
@@ -388,7 +393,10 @@ def profil_horaire_avatar(
             line=dict(color="#66BB6A", width=2.5),
             marker=dict(size=5, color="#66BB6A"),
             name="Vitesse",
-            hovertemplate="%{x}h00 → %{y:.1f} km/h<extra></extra>",
+            customdata=[
+                fmt_nombre(v, 1) for v in profil["vitesse_moy"].round(1).tolist()
+            ],
+            hovertemplate="%{x}h00 → %{customdata} km/h<extra></extra>",
         ), row=row_courant, col=1)
         row_courant += 1
 
@@ -397,7 +405,10 @@ def profil_horaire_avatar(
             x=heures, y=profil["pl_pct_moy"].round(1).tolist(),
             marker_color="#1565C0", opacity=0.85,
             name="Part PL",
-            hovertemplate="%{x}h00 → %{y:.1f} %<extra></extra>",
+            customdata=[
+                fmt_nombre(v, 1) for v in profil["pl_pct_moy"].round(1).tolist()
+            ],
+            hovertemplate="%{x}h00 → %{customdata} %<extra></extra>",
         ), row=row_courant, col=1)
 
     fig.update_xaxes(

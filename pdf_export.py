@@ -27,6 +27,8 @@ except ImportError:
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import cm
+
+from formatting import fmt_nombre
 from reportlab.platypus import (
     Image as RLImage,
     PageBreak,
@@ -133,13 +135,13 @@ def generer_rapport_global(
         for _, r in sous.iterrows():
             donnees.append([
                 r["nom_serm"],
-                f"{r['VKM_TV_milliers']:.1f}",
-                f"{r['VKM_VL_milliers']:.1f}",
-                f"{r['VKM_PL_milliers']:.1f}",
-                f"{r['pct_pl']:.1f} %",
-                f"{r['pct_transit']:.1f} %",
-                f"{r['pct_echange']:.1f} %",
-                f"{r['pct_interne']:.1f} %",
+                fmt_nombre(r["VKM_TV_milliers"], 1),
+                fmt_nombre(r["VKM_VL_milliers"], 1),
+                fmt_nombre(r["VKM_PL_milliers"], 1),
+                f"{fmt_nombre(r['pct_pl'], 1)} %",
+                f"{fmt_nombre(r['pct_transit'], 1)} %",
+                f"{fmt_nombre(r['pct_echange'], 1)} %",
+                f"{fmt_nombre(r['pct_interne'], 1)} %",
             ])
         tbl = Table(donnees, hAlign="LEFT")
         tbl.setStyle(TableStyle([
@@ -224,7 +226,7 @@ def generer_rapport_serm(
     ], [
         "Part Interne (tous vehicules)", f"{metr_row['pct_interne']:.1f} %",
     ], [
-        "Reseau cumule (km)", f"{metr_row['DISTANCE']:.0f}",
+        "Réseau cumulé (km)", fmt_nombre(metr_row["DISTANCE"], 0),
     ]]
     tbl = Table(kpi, hAlign="LEFT", colWidths=[10 * cm, 4 * cm])
     tbl.setStyle(TableStyle([
