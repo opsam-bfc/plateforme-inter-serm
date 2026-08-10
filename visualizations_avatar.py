@@ -193,7 +193,7 @@ def carte_comptages_horaires(
         fig.add_trace(go.Scattermapbox(
             lat=lats_m, lon=lons_m,
             mode="markers",
-            marker=go.scattermapbox.Marker(size=7, color="#43A047", opacity=0.8),
+            marker=go.scattermapbox.Marker(size=12, color="#43A047", opacity=0.8),
             text=hover_m,
             hoverinfo="text",
             name="Arrets Mobigo",
