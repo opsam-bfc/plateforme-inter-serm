@@ -931,8 +931,8 @@ elif page == "Comptages horaires":
     st.caption(
         "Carte multicouche : réseau routier en gris, axes à profils horaires "
         "en rouge, gares SNCF, arrêts Mobigo et stations de comptage. "
-        "Cliquer sur une station orange ou un axe rouge pour afficher "
-        "son profil horaire."
+        "Cliquer sur une station de comptage ou un axe routier pour "
+        "afficher son profil horaire."
     )
 
     # ── Chargement stations AVATAR ───────────────────────────────────────
@@ -1052,113 +1052,60 @@ elif page == "Comptages horaires":
         st.session_state["profil_route_id"] = None
 
     # ── En-tête : affichage / masquage des couches ───────────────────────
-    libelles_couches = [
-        "Stations de Comptages",
-        "Axes horaires",
-        "Gares SNCF",
-        "Arrêts Mobigo",
-    ]
-    st.markdown(
-        """
-        <style>
-        div.st-key-couches_carte_couleurs
-        [data-testid="stButtonGroup"] > button {
-            border-width: 1.5px !important;
+    # Chaque pastille a son propre conteneur : la classe "st-key-<cle>"
+    # permet de la colorer sans dépendre de sa position dans le DOM.
+    couches_carte = (
+        ("stations", "Stations de Comptages", "#F57C00", 2.0),
+        ("axes", "Axes horaires", "#D32F2F", 1.4),
+        ("gares", "Gares SNCF", "#1565C0", 1.2),
+        ("mobigo", "Arrêts Mobigo", "#43A047", 1.4),
+    )
+    regles_couleurs = "".join(
+        f"""
+        div.st-key-couche_{cle} button {{
+            border: 1.5px solid {couleur} !important;
+            background: {couleur}1F !important;
             font-weight: 600 !important;
-        }
-        div.st-key-couches_carte_couleurs
-        [data-testid="stButtonGroup"] > button * {
-            color: inherit !important;
-        }
-        /* Stations de Comptages — orange */
-        div.st-key-couches_carte_couleurs
-        [data-testid="stButtonGroup"] > button:nth-child(1) {
-            border-color: #F57C00 !important;
-            color: #F57C00 !important;
-            background: rgba(245, 124, 0, 0.12) !important;
-        }
-        div.st-key-couches_carte_couleurs
-        [data-testid="stButtonGroup"]
-        > button:nth-child(1)[aria-pressed="true"],
-        div.st-key-couches_carte_couleurs
-        [data-testid="stButtonGroup"]
-        > button:nth-child(1)[aria-checked="true"] {
-            background: #F57C00 !important;
+        }}
+        div.st-key-couche_{cle} button,
+        div.st-key-couche_{cle} button * {{
+            color: {couleur} !important;
+        }}
+        div.st-key-couche_{cle}
+        button[data-testid="stBaseButton-pillsActive"] {{
+            background: {couleur} !important;
+        }}
+        div.st-key-couche_{cle}
+        button[data-testid="stBaseButton-pillsActive"],
+        div.st-key-couche_{cle}
+        button[data-testid="stBaseButton-pillsActive"] * {{
             color: #ffffff !important;
-        }
-        /* Axes horaires — rouge */
-        div.st-key-couches_carte_couleurs
-        [data-testid="stButtonGroup"] > button:nth-child(2) {
-            border-color: #D32F2F !important;
-            color: #D32F2F !important;
-            background: rgba(211, 47, 47, 0.12) !important;
-        }
-        div.st-key-couches_carte_couleurs
-        [data-testid="stButtonGroup"]
-        > button:nth-child(2)[aria-pressed="true"],
-        div.st-key-couches_carte_couleurs
-        [data-testid="stButtonGroup"]
-        > button:nth-child(2)[aria-checked="true"] {
-            background: #D32F2F !important;
-            color: #ffffff !important;
-        }
-        /* Gares SNCF — bleu */
-        div.st-key-couches_carte_couleurs
-        [data-testid="stButtonGroup"] > button:nth-child(3) {
-            border-color: #1565C0 !important;
-            color: #1565C0 !important;
-            background: rgba(21, 101, 192, 0.12) !important;
-        }
-        div.st-key-couches_carte_couleurs
-        [data-testid="stButtonGroup"]
-        > button:nth-child(3)[aria-pressed="true"],
-        div.st-key-couches_carte_couleurs
-        [data-testid="stButtonGroup"]
-        > button:nth-child(3)[aria-checked="true"] {
-            background: #1565C0 !important;
-            color: #ffffff !important;
-        }
-        /* Arrêts Mobigo — vert */
-        div.st-key-couches_carte_couleurs
-        [data-testid="stButtonGroup"] > button:nth-child(4) {
-            border-color: #43A047 !important;
-            color: #43A047 !important;
-            background: rgba(67, 160, 71, 0.12) !important;
-        }
-        div.st-key-couches_carte_couleurs
-        [data-testid="stButtonGroup"]
-        > button:nth-child(4)[aria-pressed="true"],
-        div.st-key-couches_carte_couleurs
-        [data-testid="stButtonGroup"]
-        > button:nth-child(4)[aria-checked="true"] {
-            background: #43A047 !important;
-            color: #ffffff !important;
-        }
-        </style>
-        <p style="margin-bottom:0.25rem">
-            <strong>Carte des transports</strong>
-            <span style="font-size:0.82em;font-weight:400;color:#6B6B6B">
-            Cliquez sur un libellé pour afficher ou masquer la couche
-            </span>
-        </p>
-        """,
+        }}
+        """
+        for cle, _, couleur, _ in couches_carte
+    )
+    st.markdown(
+        f"<style>{regles_couleurs}</style>"
+        '<p style="margin-bottom:0.25rem">'
+        "<strong>Carte des transports</strong> "
+        '<span style="font-size:0.82em;font-weight:400;color:#6B6B6B">'
+        "Cliquez sur un libellé pour afficher ou masquer la couche"
+        "</span></p>",
         unsafe_allow_html=True,
     )
-    couches_sel = st.pills(
-        "Couches de la carte",
-        options=libelles_couches,
-        default=libelles_couches,
-        selection_mode="multi",
-        key="couches_carte_couleurs",
-        label_visibility="collapsed",
-    ) or []
-    couches_visibles = {
-        "stations": "Stations de Comptages" in couches_sel,
-        "axes": "Axes horaires" in couches_sel,
-        "gares": "Gares SNCF" in couches_sel,
-        "mobigo": "Arrêts Mobigo" in couches_sel,
-        "reseau": True,
-    }
+    couches_visibles = {"reseau": True}
+    largeurs = [largeur for *_, largeur in couches_carte] + [3.0]
+    colonnes_couches = st.columns(largeurs, gap="small")
+    for colonne, (cle, libelle, _, _) in zip(colonnes_couches, couches_carte):
+        with colonne:
+            couches_visibles[cle] = bool(st.pills(
+                libelle,
+                options=[libelle],
+                default=[libelle],
+                selection_mode="multi",
+                key=f"couche_{cle}",
+                label_visibility="collapsed",
+            ))
 
     # ── Carte multicouche ────────────────────────────────────────────────
     fig_carte_av = carte_comptages_horaires(
@@ -1287,8 +1234,8 @@ elif page == "Comptages horaires":
                 )
     else:
         st.info(
-            ":material/touch_app: Cliquer sur une station orange ou un axe "
-            "routier rouge pour afficher son profil horaire."
+            ":material/touch_app: Cliquer sur une station de comptage ou un "
+            "axe routier pour afficher son profil horaire."
         )
 
 
