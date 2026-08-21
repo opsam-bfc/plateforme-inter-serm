@@ -1055,10 +1055,10 @@ elif page == "Comptages horaires":
     # Chaque pastille a son propre conteneur : la classe "st-key-<cle>"
     # permet de la colorer sans dépendre de sa position dans le DOM.
     couches_carte = (
-        ("stations", "Stations de Comptages", "#F57C00", 2.0),
-        ("axes", "Axes horaires", "#D32F2F", 1.4),
-        ("gares", "Gares SNCF", "#1565C0", 1.2),
-        ("mobigo", "Arrêts Mobigo", "#43A047", 1.4),
+        ("stations", "Stations de Comptages", "#F57C00"),
+        ("axes", "Axes horaires", "#D32F2F"),
+        ("gares", "Gares SNCF", "#1565C0"),
+        ("mobigo", "Arrêts Mobigo", "#43A047"),
     )
     regles_couleurs = "".join(
         f"""
@@ -1082,10 +1082,24 @@ elif page == "Comptages horaires":
             color: #ffffff !important;
         }}
         """
-        for cle, _, couleur, _ in couches_carte
+        for cle, _, couleur in couches_carte
     )
+    # Les colonnes Streamlit occupent par défaut une fraction fixe de la
+    # largeur : on les réduit à la taille de leur pastille pour un en-tête
+    # compact.
+    regles_disposition = """
+        div.st-key-entete_couches div[data-testid="stHorizontalBlock"] {
+            gap: 0.35rem !important;
+            flex-wrap: wrap !important;
+        }
+        div.st-key-entete_couches div[data-testid="stColumn"] {
+            flex: 0 0 auto !important;
+            width: auto !important;
+            min-width: 0 !important;
+        }
+    """
     st.markdown(
-        f"<style>{regles_couleurs}</style>"
+        f"<style>{regles_couleurs}{regles_disposition}</style>"
         '<p style="margin-bottom:0.25rem">'
         "<strong>Carte des transports</strong> "
         '<span style="font-size:0.82em;font-weight:400;color:#6B6B6B">'
@@ -1094,18 +1108,18 @@ elif page == "Comptages horaires":
         unsafe_allow_html=True,
     )
     couches_visibles = {"reseau": True}
-    largeurs = [largeur for *_, largeur in couches_carte] + [3.0]
-    colonnes_couches = st.columns(largeurs, gap="small")
-    for colonne, (cle, libelle, _, _) in zip(colonnes_couches, couches_carte):
-        with colonne:
-            couches_visibles[cle] = bool(st.pills(
-                libelle,
-                options=[libelle],
-                default=[libelle],
-                selection_mode="multi",
-                key=f"couche_{cle}",
-                label_visibility="collapsed",
-            ))
+    with st.container(key="entete_couches"):
+        colonnes_couches = st.columns(len(couches_carte), gap="small")
+        for colonne, (cle, libelle, _) in zip(colonnes_couches, couches_carte):
+            with colonne:
+                couches_visibles[cle] = bool(st.pills(
+                    libelle,
+                    options=[libelle],
+                    default=[libelle],
+                    selection_mode="multi",
+                    key=f"couche_{cle}",
+                    label_visibility="collapsed",
+                ))
 
     # ── Carte multicouche ────────────────────────────────────────────────
     fig_carte_av = carte_comptages_horaires(
