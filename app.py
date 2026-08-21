@@ -1057,13 +1057,91 @@ elif page == "Comptages horaires":
         "Axes horaires",
         "Gares SNCF",
         "Arrêts Mobigo",
-        "Réseau routier",
     ]
     st.markdown(
-        "**Carte des transports** "
-        "<span style='font-size:0.82em;font-weight:400;color:#6B6B6B'>"
-        "Cliquez sur un libellé pour afficher ou masquer la couche"
-        "</span>",
+        """
+        <style>
+        div.st-key-couches_carte_couleurs
+        [data-testid="stButtonGroup"] > button {
+            border-width: 1.5px !important;
+            font-weight: 600 !important;
+        }
+        div.st-key-couches_carte_couleurs
+        [data-testid="stButtonGroup"] > button * {
+            color: inherit !important;
+        }
+        /* Stations de Comptages — orange */
+        div.st-key-couches_carte_couleurs
+        [data-testid="stButtonGroup"] > button:nth-child(1) {
+            border-color: #F57C00 !important;
+            color: #F57C00 !important;
+            background: rgba(245, 124, 0, 0.12) !important;
+        }
+        div.st-key-couches_carte_couleurs
+        [data-testid="stButtonGroup"]
+        > button:nth-child(1)[aria-pressed="true"],
+        div.st-key-couches_carte_couleurs
+        [data-testid="stButtonGroup"]
+        > button:nth-child(1)[aria-checked="true"] {
+            background: #F57C00 !important;
+            color: #ffffff !important;
+        }
+        /* Axes horaires — rouge */
+        div.st-key-couches_carte_couleurs
+        [data-testid="stButtonGroup"] > button:nth-child(2) {
+            border-color: #D32F2F !important;
+            color: #D32F2F !important;
+            background: rgba(211, 47, 47, 0.12) !important;
+        }
+        div.st-key-couches_carte_couleurs
+        [data-testid="stButtonGroup"]
+        > button:nth-child(2)[aria-pressed="true"],
+        div.st-key-couches_carte_couleurs
+        [data-testid="stButtonGroup"]
+        > button:nth-child(2)[aria-checked="true"] {
+            background: #D32F2F !important;
+            color: #ffffff !important;
+        }
+        /* Gares SNCF — bleu */
+        div.st-key-couches_carte_couleurs
+        [data-testid="stButtonGroup"] > button:nth-child(3) {
+            border-color: #1565C0 !important;
+            color: #1565C0 !important;
+            background: rgba(21, 101, 192, 0.12) !important;
+        }
+        div.st-key-couches_carte_couleurs
+        [data-testid="stButtonGroup"]
+        > button:nth-child(3)[aria-pressed="true"],
+        div.st-key-couches_carte_couleurs
+        [data-testid="stButtonGroup"]
+        > button:nth-child(3)[aria-checked="true"] {
+            background: #1565C0 !important;
+            color: #ffffff !important;
+        }
+        /* Arrêts Mobigo — vert */
+        div.st-key-couches_carte_couleurs
+        [data-testid="stButtonGroup"] > button:nth-child(4) {
+            border-color: #43A047 !important;
+            color: #43A047 !important;
+            background: rgba(67, 160, 71, 0.12) !important;
+        }
+        div.st-key-couches_carte_couleurs
+        [data-testid="stButtonGroup"]
+        > button:nth-child(4)[aria-pressed="true"],
+        div.st-key-couches_carte_couleurs
+        [data-testid="stButtonGroup"]
+        > button:nth-child(4)[aria-checked="true"] {
+            background: #43A047 !important;
+            color: #ffffff !important;
+        }
+        </style>
+        <p style="margin-bottom:0.25rem">
+            <strong>Carte des transports</strong>
+            <span style="font-size:0.82em;font-weight:400;color:#6B6B6B">
+            Cliquez sur un libellé pour afficher ou masquer la couche
+            </span>
+        </p>
+        """,
         unsafe_allow_html=True,
     )
     couches_sel = st.pills(
@@ -1071,7 +1149,7 @@ elif page == "Comptages horaires":
         options=libelles_couches,
         default=libelles_couches,
         selection_mode="multi",
-        key="couches_carte_horaires",
+        key="couches_carte_couleurs",
         label_visibility="collapsed",
     ) or []
     couches_visibles = {
@@ -1079,7 +1157,7 @@ elif page == "Comptages horaires":
         "axes": "Axes horaires" in couches_sel,
         "gares": "Gares SNCF" in couches_sel,
         "mobigo": "Arrêts Mobigo" in couches_sel,
-        "reseau": "Réseau routier" in couches_sel,
+        "reseau": True,
     }
 
     # ── Carte multicouche ────────────────────────────────────────────────
