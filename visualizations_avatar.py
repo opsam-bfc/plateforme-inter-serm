@@ -241,7 +241,6 @@ def carte_comptages_horaires(
             nom = str(row.get("count_point_name") or cp_id)
             route = str(row.get("op_road_name") or row.get("route_normalisee") or "?")
             direction = str(row.get("op_direction") or "")
-            operateur = str(row.get("operator_name") or "")
             nb_h = int(row.get("nb_heures_2026") or 0)
 
             tailles.append(20 if cp_id == station_id_sel else 12)
@@ -249,11 +248,10 @@ def carte_comptages_horaires(
                 f"<b>{nom}</b><br>"
                 f"Route : {route}"
                 + (f" ({direction})" if direction else "")
-                + f"<br>{operateur}"
                 + f"<br>{fmt_nombre(nb_h, 0)} heures disponibles"
                 + "<br><i>Cliquer pour le profil horaire</i>"
             )
-            custom.append([cp_id, nom, operateur, route])
+            custom.append([cp_id, nom, route])
 
         fig.add_trace(go.Scattermapbox(
             lat=stations["latitude"].tolist(),
@@ -265,7 +263,7 @@ def carte_comptages_horaires(
             text=hover_av,
             hoverinfo="text",
             customdata=custom,
-            name="Stations de comptages",
+            name="Stations de Comptages",
             showlegend=True,
         ))
 
@@ -284,7 +282,7 @@ def carte_comptages_horaires(
         height=580,
         title=(
             "Carte des transports — "
-            "<span style='color:#F57C00'>■ Stations de comptages</span>  "
+            "<span style='color:#F57C00'>■ Stations de Comptages</span>  "
             "<span style='color:#1565C0'>■ Gares SNCF</span>  "
             "<span style='color:#43A047'>■ Arrêts Mobigo</span>"
         ),
