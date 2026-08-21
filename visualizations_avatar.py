@@ -22,6 +22,11 @@ import plotly.graph_objects as go
 
 from formatting import fmt_nombre
 
+# Plotly atténue par défaut les points non sélectionnés à 0.2 d'opacité dès
+# qu'une sélection existe sur la figure : les gares, arrêts et stations
+# devenaient quasi invisibles au clic sur un brin routier.
+OPACITE_NON_SELECTIONNE = 0.85
+
 # ---------------------------------------------------------------------------
 # Helpers réseau routier
 # ---------------------------------------------------------------------------
@@ -150,6 +155,7 @@ def _ajouter_brins_profils(
         mode="lines+markers",
         line=dict(width=5, color="#D32F2F"),
         marker=go.scattermapbox.Marker(size=7, color="#D32F2F", opacity=0.9),
+        unselected=dict(marker=dict(opacity=OPACITE_NON_SELECTIONNE)),
         text=textes,
         hoverinfo="text",
         customdata=donnees,
@@ -246,6 +252,7 @@ def carte_comptages_horaires(
             lat=lats_m, lon=lons_m,
             mode="markers",
             marker=go.scattermapbox.Marker(size=12, color="#43A047", opacity=0.8),
+            unselected=dict(marker=dict(opacity=OPACITE_NON_SELECTIONNE)),
             text=hover_m,
             hoverinfo="text",
             name="Arrets Mobigo",
@@ -263,7 +270,13 @@ def carte_comptages_horaires(
             ) if c in gares.columns),
             gares.columns[0],
         )
-        centroides_g = gares.geometry.centroid
+        # Les géométries ne sont pas toutes des points : le centroïde est
+        # calculé en Lambert 93 car un centroïde en degrés est inexact.
+        centroides_g = (
+            gares.to_crs(2154).geometry.centroid.to_crs(4326)
+            if gares.crs is not None
+            else gares.geometry.centroid
+        )
         lats_g = centroides_g.y.tolist()
         lons_g = centroides_g.x.tolist()
         noms_g = gares[col_nom].tolist()
@@ -274,6 +287,7 @@ def carte_comptages_horaires(
             marker=go.scattermapbox.Marker(
                 size=14, color="#1565C0", opacity=0.95,
             ),
+            unselected=dict(marker=dict(opacity=OPACITE_NON_SELECTIONNE)),
             text=hover_g,
             hoverinfo="text",
             name="Gares SNCF",
@@ -310,6 +324,7 @@ def carte_comptages_horaires(
             marker=go.scattermapbox.Marker(
                 size=tailles, color="#F57C00", opacity=0.95,
             ),
+            unselected=dict(marker=dict(opacity=OPACITE_NON_SELECTIONNE)),
             text=hover_av,
             hoverinfo="text",
             customdata=custom,
