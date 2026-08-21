@@ -78,6 +78,7 @@ def _ajouter_reseau(fig: go.Figure, reseau_gdf, metrique: str = "VL_jour") -> No
         hoverinfo="text",
         name="Réseau routier",
         showlegend=True,
+        legendrank=5,
     ))
 
 
@@ -114,6 +115,7 @@ def _ajouter_brins_profils(
                 line=dict(width=12, color="#4A0E0E"),
                 hoverinfo="skip",
                 showlegend=False,
+                legendgroup="axes_horaires",
             ))
 
     lats: list = []
@@ -159,8 +161,10 @@ def _ajouter_brins_profils(
         text=textes,
         hoverinfo="text",
         customdata=donnees,
-        name="Axes à profils horaires",
+        name="Axes horaires",
         showlegend=True,
+        legendgroup="axes_horaires",
+        legendrank=2,
     ))
 
 
@@ -178,6 +182,7 @@ def carte_comptages_horaires(
     profils_routiers_gdf=None,
     gares_gdf=None,
     mobigo_gdf=None,
+    couches_visibles: dict[str, bool] | None = None,
 ) -> go.Figure:
     """Carte Scattermapbox multicouche pour le module Comptages horaires.
 
@@ -198,10 +203,23 @@ def carte_comptages_horaires(
         profils_routiers_gdf: Brins dotés de profils horaires JO et SD.
         gares_gdf: GeoDataFrame des gares SNCF (optionnel).
         mobigo_gdf: GeoDataFrame des arrets Mobigo (optionnel).
+        couches_visibles: Masque d'affichage des couches. Cles reconnues :
+            ``stations``, ``axes``, ``gares``, ``mobigo``, ``reseau``.
+            Toute cle absente est consideree comme visible.
 
     Returns:
         Figure Plotly.
     """
+    visible = {
+        "stations": True,
+        "axes": True,
+        "gares": True,
+        "mobigo": True,
+        "reseau": True,
+    }
+    if couches_visibles:
+        visible.update(couches_visibles)
+
     fig = go.Figure()
 
     # ── 1. Contour du perimetre SERM ─────────────────────────────────────
@@ -230,17 +248,19 @@ def carte_comptages_horaires(
         ))
 
     # ── 2. Reseau routier ────────────────────────────────────────────────
-    _ajouter_reseau(fig, reseau_gdf)
+    if visible["reseau"]:
+        _ajouter_reseau(fig, reseau_gdf)
 
     # ── 3. Brins routiers à profils horaires (rouge) ─────────────────────
-    _ajouter_brins_profils(
-        fig,
-        profils_routiers_gdf,
-        id_route_selectionne=id_route_selectionne,
-    )
+    if visible["axes"]:
+        _ajouter_brins_profils(
+            fig,
+            profils_routiers_gdf,
+            id_route_selectionne=id_route_selectionne,
+        )
 
     # ── 4. Arrêts Mobigo (vert) ──────────────────────────────────────────
-    if mobigo_gdf is not None and len(mobigo_gdf) > 0:
+    if visible["mobigo"] and mobigo_gdf is not None and len(mobigo_gdf) > 0:
         mob = mobigo_gdf.copy()
         if mob.crs is not None and mob.crs.to_epsg() != 4326:
             mob = mob.to_crs(4326)
@@ -255,12 +275,13 @@ def carte_comptages_horaires(
             unselected=dict(marker=dict(opacity=OPACITE_NON_SELECTIONNE)),
             text=hover_m,
             hoverinfo="text",
-            name="Arrets Mobigo",
+            name="Arrêts Mobigo",
             showlegend=True,
+            legendrank=4,
         ))
 
     # ── 5. Gares SNCF (bleu) ─────────────────────────────────────────────
-    if gares_gdf is not None and len(gares_gdf) > 0:
+    if visible["gares"] and gares_gdf is not None and len(gares_gdf) > 0:
         gares = gares_gdf.copy()
         if gares.crs is not None and gares.crs.to_epsg() != 4326:
             gares = gares.to_crs(4326)
@@ -292,10 +313,11 @@ def carte_comptages_horaires(
             hoverinfo="text",
             name="Gares SNCF",
             showlegend=True,
+            legendrank=3,
         ))
 
     # ── 6. Stations de comptage (orange) ─────────────────────────────────
-    if not stations.empty:
+    if visible["stations"] and not stations.empty:
         tailles = []
         hover_av: list[str] = []
         custom: list[list] = []
@@ -330,6 +352,7 @@ def carte_comptages_horaires(
             customdata=custom,
             name="Stations de Comptages",
             showlegend=True,
+            legendrank=1,
         ))
 
     # ── Cadrage et mise en page ──────────────────────────────────────────
@@ -343,20 +366,9 @@ def carte_comptages_horaires(
             center=dict(lat=centre_lat, lon=centre_lon),
             zoom=8,
         ),
-        margin={"l": 0, "r": 0, "t": 40, "b": 0},
+        margin={"l": 0, "r": 0, "t": 0, "b": 0},
         height=580,
-        title=(
-            "Carte des transports — "
-            "<span style='color:#F57C00'>■ Stations de Comptages</span>  "
-            "<span style='color:#D32F2F'>■ Axes horaires</span>  "
-            "<span style='color:#1565C0'>■ Gares SNCF</span>  "
-            "<span style='color:#43A047'>■ Arrêts Mobigo</span>"
-        ),
-        legend=dict(
-            bgcolor="rgba(30,30,30,0.80)",
-            font=dict(color="white", size=11),
-            x=0.01, y=0.99,
-        ),
+        showlegend=False,
     )
     return fig
 

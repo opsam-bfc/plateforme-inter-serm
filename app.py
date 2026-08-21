@@ -1051,6 +1051,37 @@ elif page == "Comptages horaires":
     if "profil_route_id" not in st.session_state:
         st.session_state["profil_route_id"] = None
 
+    # ── En-tête : affichage / masquage des couches ───────────────────────
+    libelles_couches = [
+        "Stations de Comptages",
+        "Axes horaires",
+        "Gares SNCF",
+        "Arrêts Mobigo",
+        "Réseau routier",
+    ]
+    st.markdown(
+        "**Carte des transports** "
+        "<span style='font-size:0.82em;font-weight:400;color:#6B6B6B'>"
+        "Cliquez sur un libellé pour afficher ou masquer la couche"
+        "</span>",
+        unsafe_allow_html=True,
+    )
+    couches_sel = st.pills(
+        "Couches de la carte",
+        options=libelles_couches,
+        default=libelles_couches,
+        selection_mode="multi",
+        key="couches_carte_horaires",
+        label_visibility="collapsed",
+    ) or []
+    couches_visibles = {
+        "stations": "Stations de Comptages" in couches_sel,
+        "axes": "Axes horaires" in couches_sel,
+        "gares": "Gares SNCF" in couches_sel,
+        "mobigo": "Arrêts Mobigo" in couches_sel,
+        "reseau": "Réseau routier" in couches_sel,
+    }
+
     # ── Carte multicouche ────────────────────────────────────────────────
     fig_carte_av = carte_comptages_horaires(
         stations_serm if not stations_serm.empty else pd.DataFrame(
@@ -1066,6 +1097,7 @@ elif page == "Comptages horaires":
         ),
         gares_gdf=gares_av if not gares_av.empty else None,
         mobigo_gdf=mobigo_av if not mobigo_av.empty else None,
+        couches_visibles=couches_visibles,
     )
     ev = st.plotly_chart(
         fig_carte_av,
