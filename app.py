@@ -395,7 +395,7 @@ with st.sidebar:
             "Zoom sur un SERM (carte, Sankey, distances)",
             "Top flux VL internes / émis / reçus",
             "Matrices OD inter-SERM et par EPCI",
-            "Profils horaires DIR Est & DIR Centre-Est",
+            "Profils horaires",
             "Données contextuelles INSEE / SNCF",
             "Périmètres, régénération du bundle",
         ],
@@ -927,9 +927,8 @@ elif page == "Comptages horaires":
     st.header("Comptages horaires — Réseau routier & Transports collectifs")
     st.caption(
         "Carte multicouche : trafic VL sur le réseau routier, gares SNCF, "
-        "arrêts Mobigo et stations de comptage permanent (DIR Est & "
-        "DIR Centre-Est). Cliquer sur une station orange pour afficher "
-        "son profil horaire moyen."
+        "arrêts Mobigo et stations de comptage. Cliquer sur une station "
+        "orange pour afficher son profil horaire moyen."
     )
 
     # ── Chargement stations AVATAR ───────────────────────────────────────
@@ -1011,7 +1010,7 @@ elif page == "Comptages horaires":
         stations_serm = pd.DataFrame()
 
     st.caption(
-        f"**{len(stations_serm)}** station(s) DIR  •  "
+        f"**{len(stations_serm)}** station(s) de comptage  •  "
         f"**{len(gares_av)}** gare(s) SNCF  •  "
         f"**{len(mobigo_av)}** arrêt(s) Mobigo"
     )

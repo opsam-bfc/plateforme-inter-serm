@@ -265,7 +265,7 @@ def carte_comptages_horaires(
             text=hover_av,
             hoverinfo="text",
             customdata=custom,
-            name="Stations comptage (DIR)",
+            name="Stations de comptages",
             showlegend=True,
         ))
 
@@ -284,9 +284,9 @@ def carte_comptages_horaires(
         height=580,
         title=(
             "Carte des transports — "
-            "<span style='color:#F57C00'>■ Stations DIR</span>  "
+            "<span style='color:#F57C00'>■ Stations de comptages</span>  "
             "<span style='color:#1565C0'>■ Gares SNCF</span>  "
-            "<span style='color:#43A047'>■ Arrets Mobigo</span>"
+            "<span style='color:#43A047'>■ Arrêts Mobigo</span>"
         ),
         legend=dict(
             bgcolor="rgba(30,30,30,0.80)",
