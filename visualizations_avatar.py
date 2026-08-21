@@ -81,13 +81,35 @@ def _ajouter_brins_profils(
     profils_gdf,
     id_route_selectionne: str | None = None,
 ) -> None:
-    """Ajoute les brins à profils horaires en rouge dans une seule trace."""
+    """Ajoute les brins à profils horaires en rouge, cliquables.
+
+    Plotly ne remonte d'événement de sélection que sur des points : les
+    sommets des brins sont donc tracés en marqueurs discrets par-dessus
+    les lignes pour rendre chaque brin cliquable.
+    """
     if profils_gdf is None or len(profils_gdf) == 0:
         return
 
     profils = profils_gdf.copy()
     if profils.crs is not None and profils.crs.to_epsg() != 4326:
         profils = profils.to_crs(4326)
+
+    # Halo du brin sélectionné, tracé en premier pour rester sous la
+    # couche cliquable.
+    if id_route_selectionne is not None:
+        selection = profils[
+            profils["id_route"].astype(str) == str(id_route_selectionne)
+        ]
+        if not selection.empty:
+            lats_sel, lons_sel, _ = _coords_lignes_reseau(selection)
+            fig.add_trace(go.Scattermapbox(
+                lat=lats_sel,
+                lon=lons_sel,
+                mode="lines",
+                line=dict(width=12, color="#4A0E0E"),
+                hoverinfo="skip",
+                showlegend=False,
+            ))
 
     lats: list = []
     lons: list = []
@@ -125,30 +147,14 @@ def _ajouter_brins_profils(
     fig.add_trace(go.Scattermapbox(
         lat=lats,
         lon=lons,
-        mode="lines",
+        mode="lines+markers",
         line=dict(width=5, color="#D32F2F"),
+        marker=go.scattermapbox.Marker(size=7, color="#D32F2F", opacity=0.9),
         text=textes,
         hoverinfo="text",
         customdata=donnees,
         name="Axes à profils horaires",
         showlegend=True,
-    ))
-
-    if id_route_selectionne is None:
-        return
-    selection = profils[
-        profils["id_route"].astype(str) == str(id_route_selectionne)
-    ]
-    if selection.empty:
-        return
-    lats_sel, lons_sel, _ = _coords_lignes_reseau(selection)
-    fig.add_trace(go.Scattermapbox(
-        lat=lats_sel,
-        lon=lons_sel,
-        mode="lines",
-        line=dict(width=9, color="#B71C1C"),
-        hoverinfo="skip",
-        showlegend=False,
     ))
 
 

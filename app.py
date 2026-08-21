@@ -1089,7 +1089,11 @@ elif page == "Comptages horaires":
     route_id_av = st.session_state["profil_route_id"]
     station_id_av = st.session_state["avatar_station_id"]
     if route_id_av is not None:
-        ids_routes = profils_routiers_av["id_route"].astype(str)
+        ids_routes = (
+            profils_routiers_av["id_route"].astype(str)
+            if "id_route" in profils_routiers_av.columns
+            else pd.Series(dtype=str)
+        )
         if route_id_av not in ids_routes.values:
             st.session_state["profil_route_id"] = None
         else:
