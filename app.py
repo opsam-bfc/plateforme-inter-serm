@@ -47,6 +47,7 @@ from data_loader import (  # noqa: E402
     charger_perimetres_serm,
     charger_gares_locales,
     charger_profils_avatar,
+    charger_profils_horaires_routiers,
     charger_reseau_serm,
     charger_stations_avatar,
     charger_synthese_serm,
@@ -80,7 +81,9 @@ from visualizations import (  # noqa: E402
 )
 from visualizations_avatar import (  # noqa: E402
     carte_comptages_horaires,
+    donnees_profil_horaire_routier,
     profil_horaire_avatar,
+    profil_horaire_routier,
 )
 from pdf_export import (  # noqa: E402
     generer_rapport_global,
@@ -926,9 +929,10 @@ elif page == "Comptages horaires":
 
     st.header("Comptages horaires — Réseau routier & Transports collectifs")
     st.caption(
-        "Carte multicouche : trafic VL sur le réseau routier, gares SNCF, "
-        "arrêts Mobigo et stations de comptage. Cliquer sur une station "
-        "orange pour afficher son profil horaire moyen."
+        "Carte multicouche : réseau routier en gris, axes à profils horaires "
+        "en rouge, gares SNCF, arrêts Mobigo et stations de comptage. "
+        "Cliquer sur une station orange ou un axe rouge pour afficher "
+        "son profil horaire."
     )
 
     # ── Chargement stations AVATAR ───────────────────────────────────────
@@ -960,6 +964,31 @@ elif page == "Comptages horaires":
         return charger_reseau_serm(slug)
 
     reseau_av = _reseau_av(inf_serm_av["slug"], signature)
+
+    # ── Brins routiers dotés de profils horaires JO / SD ─────────────────
+    @st.cache_data(
+        show_spinner="Chargement des profils horaires routiers...",
+        max_entries=3,
+    )
+    def _profils_routiers_serm(code: int, sig: float):
+        del sig
+        profils = charger_profils_horaires_routiers()
+        peri = perimetres_gdf[
+            perimetres_gdf["code_serm"] == code
+        ].to_crs(4326)
+        if peri.empty:
+            return profils
+        union = peri.union_all()
+        return profils[profils.geometry.intersects(union)].copy()
+
+    try:
+        profils_routiers_av = _profils_routiers_serm(
+            code_serm_av,
+            signature,
+        )
+    except (FileNotFoundError, ValueError) as exc:
+        st.caption(f"Profils horaires routiers indisponibles : {exc}")
+        profils_routiers_av = gpd.GeoDataFrame()
 
     # ── Gares ferroviaires (shapefile IGN local, filtre sur le SERM) ─────
     @st.cache_data(show_spinner="Chargement des gares...", max_entries=3)
@@ -1011,13 +1040,16 @@ elif page == "Comptages horaires":
 
     st.caption(
         f"**{len(stations_serm)}** station(s) de comptage  •  "
+        f"**{len(profils_routiers_av)}** brin(s) à profils horaires  •  "
         f"**{len(gares_av)}** gare(s) SNCF  •  "
         f"**{len(mobigo_av)}** arrêt(s) Mobigo"
     )
 
-    # ── Etat de la station selectionnee ──────────────────────────────────
+    # ── État des éléments sélectionnés ───────────────────────────────────
     if "avatar_station_id" not in st.session_state:
         st.session_state["avatar_station_id"] = None
+    if "profil_route_id" not in st.session_state:
+        st.session_state["profil_route_id"] = None
 
     # ── Carte multicouche ────────────────────────────────────────────────
     fig_carte_av = carte_comptages_horaires(
@@ -1027,7 +1059,11 @@ elif page == "Comptages horaires":
         peri_serm_av,
         style_mapbox=_style_mapbox(),
         station_id_sel=st.session_state["avatar_station_id"],
+        id_route_selectionne=st.session_state["profil_route_id"],
         reseau_gdf=reseau_av,
+        profils_routiers_gdf=(
+            profils_routiers_av if not profils_routiers_av.empty else None
+        ),
         gares_gdf=gares_av if not gares_av.empty else None,
         mobigo_gdf=mobigo_av if not mobigo_av.empty else None,
     )
@@ -1042,12 +1078,55 @@ elif page == "Comptages horaires":
     pts = (ev.selection.points if ev and ev.selection else [])
     if pts:
         cd = pts[0].get("customdata")
-        if cd and len(cd) >= 1:
-            st.session_state["avatar_station_id"] = int(cd[0])
+        if cd and len(cd) >= 2 and cd[0] == "station":
+            st.session_state["avatar_station_id"] = int(cd[1])
+            st.session_state["profil_route_id"] = None
+        elif cd and len(cd) >= 2 and cd[0] == "route":
+            st.session_state["profil_route_id"] = str(cd[1])
+            st.session_state["avatar_station_id"] = None
 
-    # ── Profil horaire de la station selectionnee ─────────────────────────
+    # ── Profil horaire du brin routier sélectionné ───────────────────────
+    route_id_av = st.session_state["profil_route_id"]
     station_id_av = st.session_state["avatar_station_id"]
-    if station_id_av is not None:
+    if route_id_av is not None:
+        ids_routes = profils_routiers_av["id_route"].astype(str)
+        if route_id_av not in ids_routes.values:
+            st.session_state["profil_route_id"] = None
+        else:
+            st.divider()
+            st.subheader("Profils horaires routiers JO / SD")
+            st.plotly_chart(
+                profil_horaire_routier(profils_routiers_av, route_id_av),
+                use_container_width=True,
+            )
+
+            with st.expander("Données brutes du profil routier (CSV)"):
+                donnees_route = donnees_profil_horaire_routier(
+                    profils_routiers_av,
+                    route_id_av,
+                )
+                donnees_affichees = donnees_route.rename(columns={
+                    "plage_horaire": "Plage horaire",
+                    "JO": "JO (véh/h)",
+                    "SD": "SD (véh/h)",
+                }).drop(columns=["heure"], errors="ignore")
+                st.dataframe(
+                    donnees_affichees,
+                    use_container_width=True,
+                    hide_index=True,
+                )
+                csv_route = donnees_affichees.to_csv(
+                    index=False,
+                    sep=";",
+                    decimal=",",
+                ).encode("utf-8-sig")
+                st.download_button(
+                    ":material/download: Exporter le profil routier (CSV)",
+                    csv_route,
+                    f"profil_horaire_routier_{route_id_av}.csv",
+                    "text/csv",
+                )
+    elif station_id_av is not None:
         # Verifier que la station est bien dans ce SERM
         if station_id_av not in stations_serm["count_point_id"].values:
             st.session_state["avatar_station_id"] = None
@@ -1094,8 +1173,8 @@ elif page == "Comptages horaires":
                 )
     else:
         st.info(
-            ":material/touch_app: Cliquer sur une station sur la carte "
-            "pour afficher son profil horaire."
+            ":material/touch_app: Cliquer sur une station orange ou un axe "
+            "routier rouge pour afficher son profil horaire."
         )
 
 

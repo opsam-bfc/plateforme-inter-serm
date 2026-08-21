@@ -1053,6 +1053,49 @@ def charger_gares_locales() -> gpd.GeoDataFrame:
     return gdf
 
 
+def charger_profils_horaires_routiers() -> gpd.GeoDataFrame:
+    """Charge les brins routiers dotés de profils horaires JO et SD.
+
+    Le GeoPackage partagé est indépendant du scénario OPSAM actif. Chaque
+    ligne correspond à un brin et contient le TMJA ainsi que 24 valeurs
+    horaires pour les jours ouvrés (JO) et les week-ends (SD).
+
+    Returns:
+        GeoDataFrame en WGS84, indexé par l'identifiant unique ``id_route``.
+
+    Raises:
+        FileNotFoundError: Si le GeoPackage n'est pas présent.
+        ValueError: Si une colonne indispensable est absente.
+    """
+    chemin = (
+        data_root()
+        / "profils_horaire_routier"
+        / "tmja_2024_vl_pl_serm_dm_profils_h_horaire.gpkg"
+    )
+    if not chemin.is_file():
+        raise FileNotFoundError(
+            f"Profils horaires routiers introuvables : {chemin}."
+        )
+
+    gdf = gpd.read_file(chemin)
+    colonnes_requises = {
+        "id_route",
+        "TMJA_P",
+        "profil",
+        "TMJA_JO_00_01",
+        "TMJA_SD_00_01",
+    }
+    colonnes_absentes = colonnes_requises.difference(gdf.columns)
+    if colonnes_absentes:
+        raise ValueError(
+            "Colonnes manquantes dans les profils routiers : "
+            + ", ".join(sorted(colonnes_absentes))
+        )
+    if gdf.crs is None or gdf.crs.to_epsg() != 4326:
+        gdf = gdf.to_crs(4326)
+    return gdf
+
+
 def charger_stations_avatar() -> pd.DataFrame:
     """Charge ``data/avatar/metadonnees_stations_bfc.csv`` (stations).
 

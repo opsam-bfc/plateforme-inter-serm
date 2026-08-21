@@ -23,23 +23,8 @@ import plotly.graph_objects as go
 from formatting import fmt_nombre
 
 # ---------------------------------------------------------------------------
-# Helpers reseau routier
+# Helpers réseau routier
 # ---------------------------------------------------------------------------
-
-_PALETTE_RESEAU = [
-    [0.0,  "#1a237e"],
-    [0.25, "#283593"],
-    [0.5,  "#1565c0"],
-    [0.75, "#ef6c00"],
-    [1.0,  "#b71c1c"],
-]
-
-_COULEURS_VOIE = {
-    "Autoroute":      "#E53935",
-    "Nationale":      "#FB8C00",
-    "Departementale": "#43A047",
-    "NoData":         "#90A4AE",
-}
 
 
 def _coords_lignes_reseau(gdf) -> tuple[list, list, list]:
@@ -65,7 +50,7 @@ def _coords_lignes_reseau(gdf) -> tuple[list, list, list]:
 
 
 def _ajouter_reseau(fig: go.Figure, reseau_gdf, metrique: str = "VL_jour") -> None:
-    """Ajoute le reseau routier en traces Scattermapbox par type de voie."""
+    """Ajoute tout le réseau routier dans une trace gris foncé."""
     if reseau_gdf is None or len(reseau_gdf) == 0:
         return
 
@@ -78,45 +63,93 @@ def _ajouter_reseau(fig: go.Figure, reseau_gdf, metrique: str = "VL_jour") -> No
         return
 
     reseau[metrique] = reseau[metrique].fillna(0)
+    lats, lons, textes = _coords_lignes_reseau(reseau)
+    fig.add_trace(go.Scattermapbox(
+        lat=lats,
+        lon=lons,
+        mode="lines",
+        line=dict(width=1.6, color="#4A4A4A"),
+        text=textes,
+        hoverinfo="text",
+        name="Réseau routier",
+        showlegend=True,
+    ))
 
-    # Troncons sans comptage en gris clair
-    sans = reseau[reseau[metrique] == 0]
-    if not sans.empty:
-        lats, lons, _ = _coords_lignes_reseau(sans)
-        fig.add_trace(go.Scattermapbox(
-            lat=lats, lon=lons, mode="lines",
-            line=dict(width=0.8, color="#BDBDBD"),
-            hoverinfo="skip", showlegend=False,
-        ))
 
-    # Troncons avec comptage : couleur par type de voie
-    avec = reseau[reseau[metrique] > 0]
-    col_voie = next(
-        (c for c in ("CL_ADMIN", "type_voie", "classe_admin") if c in avec.columns),
-        None,
-    )
-    groupes = (
-        avec.groupby(col_voie)
-        if col_voie
-        else [(None, avec)]
-    )
-    for voie, grp in groupes:
-        voie_str = str(voie) if voie else ""
-        couleur = next(
-            (v for k, v in _COULEURS_VOIE.items() if k.lower() in voie_str.lower()),
-            "#90A4AE",
+def _ajouter_brins_profils(
+    fig: go.Figure,
+    profils_gdf,
+    id_route_selectionne: str | None = None,
+) -> None:
+    """Ajoute les brins à profils horaires en rouge dans une seule trace."""
+    if profils_gdf is None or len(profils_gdf) == 0:
+        return
+
+    profils = profils_gdf.copy()
+    if profils.crs is not None and profils.crs.to_epsg() != 4326:
+        profils = profils.to_crs(4326)
+
+    lats: list = []
+    lons: list = []
+    textes: list = []
+    donnees: list = []
+    for _, row in profils.iterrows():
+        identifiant = str(row["id_route"])
+        libelle = str(row.get("profil") or identifiant)
+        tmja = fmt_nombre(row.get("TMJA_P"), 0)
+        geometrie = row.geometry
+        lignes = (
+            list(geometrie.geoms)
+            if geometrie.geom_type == "MultiLineString"
+            else [geometrie]
         )
-        epaisseur = 3.0 if "auto" in voie_str.lower() else (
-            2.2 if "nat" in voie_str.lower() else 1.4
-        )
-        lats, lons, textes = _coords_lignes_reseau(grp)
-        fig.add_trace(go.Scattermapbox(
-            lat=lats, lon=lons, mode="lines",
-            line=dict(width=epaisseur, color=couleur),
-            text=textes,
-            hoverinfo="text",
-            showlegend=False,
-        ))
+        for ligne in lignes:
+            coords = list(ligne.coords)
+            lats.extend(coord[1] for coord in coords)
+            lons.extend(coord[0] for coord in coords)
+            textes.extend(
+                [
+                    f"<b>{libelle}</b><br>TMJA : {tmja} véh/j"
+                    "<br><i>Cliquer pour afficher les profils JO et SD</i>"
+                ]
+                * len(coords)
+            )
+            donnees.extend(
+                [["route", identifiant, libelle]] * len(coords)
+            )
+            lats.append(None)
+            lons.append(None)
+            textes.append(None)
+            donnees.append(["", "", ""])
+
+    fig.add_trace(go.Scattermapbox(
+        lat=lats,
+        lon=lons,
+        mode="lines",
+        line=dict(width=5, color="#D32F2F"),
+        text=textes,
+        hoverinfo="text",
+        customdata=donnees,
+        name="Axes à profils horaires",
+        showlegend=True,
+    ))
+
+    if id_route_selectionne is None:
+        return
+    selection = profils[
+        profils["id_route"].astype(str) == str(id_route_selectionne)
+    ]
+    if selection.empty:
+        return
+    lats_sel, lons_sel, _ = _coords_lignes_reseau(selection)
+    fig.add_trace(go.Scattermapbox(
+        lat=lats_sel,
+        lon=lons_sel,
+        mode="lines",
+        line=dict(width=9, color="#B71C1C"),
+        hoverinfo="skip",
+        showlegend=False,
+    ))
 
 
 # ---------------------------------------------------------------------------
@@ -128,7 +161,9 @@ def carte_comptages_horaires(
     perimetre_gdf,
     style_mapbox: str = "carto-positron",
     station_id_sel: int | None = None,
+    id_route_selectionne: str | None = None,
     reseau_gdf=None,
+    profils_routiers_gdf=None,
     gares_gdf=None,
     mobigo_gdf=None,
 ) -> go.Figure:
@@ -137,9 +172,10 @@ def carte_comptages_horaires(
     Couches (ordre d'empilement bas → haut) :
       1. Contour du perimetre SERM
       2. Reseau routier (trafic VL, couleur par type de voie)
-      3. Arrets Mobigo  — points verts
-      4. Gares SNCF     — points bleus
-      5. Stations AVATAR — points orange (clic → profil horaire)
+      3. Brins à profils horaires — lignes rouges cliquables
+      4. Arrêts Mobigo — points verts
+      5. Gares SNCF — points bleus
+      6. Stations de comptage — points orange cliquables
 
     Args:
         stations: DataFrame metadonnees stations AVATAR (deja filtre sur SERM).
@@ -147,6 +183,7 @@ def carte_comptages_horaires(
         style_mapbox: Style de fond Plotly.
         station_id_sel: count_point_id de la station selectionnee.
         reseau_gdf: GeoDataFrame du reseau routier (optionnel).
+        profils_routiers_gdf: Brins dotés de profils horaires JO et SD.
         gares_gdf: GeoDataFrame des gares SNCF (optionnel).
         mobigo_gdf: GeoDataFrame des arrets Mobigo (optionnel).
 
@@ -183,7 +220,14 @@ def carte_comptages_horaires(
     # ── 2. Reseau routier ────────────────────────────────────────────────
     _ajouter_reseau(fig, reseau_gdf)
 
-    # ── 3. Arrets Mobigo (vert) ──────────────────────────────────────────
+    # ── 3. Brins routiers à profils horaires (rouge) ─────────────────────
+    _ajouter_brins_profils(
+        fig,
+        profils_routiers_gdf,
+        id_route_selectionne=id_route_selectionne,
+    )
+
+    # ── 4. Arrêts Mobigo (vert) ──────────────────────────────────────────
     if mobigo_gdf is not None and len(mobigo_gdf) > 0:
         mob = mobigo_gdf.copy()
         if mob.crs is not None and mob.crs.to_epsg() != 4326:
@@ -202,7 +246,7 @@ def carte_comptages_horaires(
             showlegend=True,
         ))
 
-    # ── 4. Gares SNCF (bleu) ─────────────────────────────────────────────
+    # ── 5. Gares SNCF (bleu) ─────────────────────────────────────────────
     if gares_gdf is not None and len(gares_gdf) > 0:
         gares = gares_gdf.copy()
         if gares.crs is not None and gares.crs.to_epsg() != 4326:
@@ -230,7 +274,7 @@ def carte_comptages_horaires(
             showlegend=True,
         ))
 
-    # ── 5. Stations AVATAR (orange) ──────────────────────────────────────
+    # ── 6. Stations de comptage (orange) ─────────────────────────────────
     if not stations.empty:
         tailles = []
         hover_av: list[str] = []
@@ -251,7 +295,7 @@ def carte_comptages_horaires(
                 + f"<br>{fmt_nombre(nb_h, 0)} heures disponibles"
                 + "<br><i>Cliquer pour le profil horaire</i>"
             )
-            custom.append([cp_id, nom, route])
+            custom.append(["station", cp_id, nom, route])
 
         fig.add_trace(go.Scattermapbox(
             lat=stations["latitude"].tolist(),
@@ -283,6 +327,7 @@ def carte_comptages_horaires(
         title=(
             "Carte des transports — "
             "<span style='color:#F57C00'>■ Stations de Comptages</span>  "
+            "<span style='color:#D32F2F'>■ Axes horaires</span>  "
             "<span style='color:#1565C0'>■ Gares SNCF</span>  "
             "<span style='color:#43A047'>■ Arrêts Mobigo</span>"
         ),
@@ -429,4 +474,115 @@ def profil_horaire_avatar(
         paper_bgcolor="#1A1A2E",
         font=dict(color="#E0E0E0"),
     )
+    return fig
+
+
+def donnees_profil_horaire_routier(
+    profils_gdf,
+    id_route: str,
+) -> pd.DataFrame:
+    """Retourne les 24 valeurs JO et SD d'un brin au format long."""
+    selection = profils_gdf[
+        profils_gdf["id_route"].astype(str) == str(id_route)
+    ]
+    if selection.empty:
+        return pd.DataFrame(columns=["heure", "JO", "SD"])
+
+    ligne = selection.iloc[0]
+    donnees: list[dict] = []
+    for heure in range(24):
+        fin = heure + 1
+        suffixe = f"{heure:02d}_{fin:02d}"
+        donnees.append({
+            "heure": heure,
+            "plage_horaire": f"{heure:02d}h–{fin:02d}h",
+            "JO": pd.to_numeric(
+                ligne.get(f"TMJA_JO_{suffixe}"), errors="coerce"
+            ),
+            "SD": pd.to_numeric(
+                ligne.get(f"TMJA_SD_{suffixe}"), errors="coerce"
+            ),
+        })
+    return pd.DataFrame(donnees)
+
+
+def profil_horaire_routier(
+    profils_gdf,
+    id_route: str,
+) -> go.Figure:
+    """Superpose les profils horaires JO et SD d'un brin routier."""
+    selection = profils_gdf[
+        profils_gdf["id_route"].astype(str) == str(id_route)
+    ]
+    if selection.empty:
+        return go.Figure().update_layout(
+            title=f"Aucun profil disponible pour le brin {id_route}.",
+            height=250,
+        )
+
+    ligne = selection.iloc[0]
+    donnees = donnees_profil_horaire_routier(profils_gdf, id_route)
+    nom_profil = str(ligne.get("profil") or id_route)
+    tmja = fmt_nombre(ligne.get("TMJA_P"), 0)
+
+    fig = go.Figure()
+    for colonne, libelle, couleur in (
+        ("JO", "JO — jours ouvrés", "#D32F2F"),
+        ("SD", "SD — week-end", "#1565C0"),
+    ):
+        fig.add_trace(go.Scatter(
+            x=donnees["heure"],
+            y=donnees[colonne],
+            mode="lines+markers",
+            line=dict(color=couleur, width=3),
+            marker=dict(size=6, color=couleur),
+            name=libelle,
+            customdata=[
+                fmt_nombre(valeur, 1) for valeur in donnees[colonne]
+            ],
+            hovertemplate=(
+                "%{x}h00 → %{customdata} véh/h<extra>"
+                + libelle
+                + "</extra>"
+            ),
+        ))
+
+    fig.add_annotation(
+        x=0.01,
+        y=0.98,
+        xref="paper",
+        yref="paper",
+        text=f"<b>TMJA : {tmja} véh/j</b>",
+        showarrow=False,
+        align="left",
+        bgcolor="rgba(255,255,255,0.88)",
+        bordercolor="#AAB4BE",
+        borderwidth=1,
+        borderpad=6,
+        font=dict(color="#243447", size=13),
+    )
+    fig.update_layout(
+        title=f"Profils horaires routiers — {nom_profil}",
+        xaxis=dict(
+            title="Heure",
+            tickvals=list(range(0, 24, 2)),
+            ticktext=[f"{heure:02d}h" for heure in range(0, 24, 2)],
+        ),
+        yaxis=dict(title="Trafic horaire (véh/h)"),
+        hovermode="x unified",
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1,
+        ),
+        height=480,
+        margin={"l": 60, "r": 20, "t": 85, "b": 55},
+        plot_bgcolor="#FFFFFF",
+        paper_bgcolor="#FFFFFF",
+        font=dict(color="#243447"),
+    )
+    fig.update_xaxes(gridcolor="#E6EBF1")
+    fig.update_yaxes(gridcolor="#E6EBF1", rangemode="tozero")
     return fig
