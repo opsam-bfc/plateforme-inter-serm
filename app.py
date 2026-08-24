@@ -1060,37 +1060,6 @@ elif page == "Comptages horaires":
         ("gares", "Gares SNCF", "#1565C0"),
         ("mobigo", "Arrêts Mobigo", "#43A047"),
     )
-    # Couche affichée : pastille pleine dans la couleur de la carte.
-    # Couche masquée : pastille grisée.
-    regles_couleurs = "".join(
-        f"""
-        div.st-key-couche_{cle}
-        button[data-testid="stBaseButton-pillsActive"] {{
-            border: 1.5px solid {couleur} !important;
-            background: {couleur} !important;
-            font-weight: 600 !important;
-        }}
-        div.st-key-couche_{cle}
-        button[data-testid="stBaseButton-pillsActive"],
-        div.st-key-couche_{cle}
-        button[data-testid="stBaseButton-pillsActive"] * {{
-            color: #ffffff !important;
-        }}
-        div.st-key-couche_{cle}
-        button[data-testid="stBaseButton-pills"] {{
-            border: 1.5px solid rgba(140, 140, 140, 0.55) !important;
-            background: rgba(140, 140, 140, 0.12) !important;
-            font-weight: 500 !important;
-        }}
-        div.st-key-couche_{cle}
-        button[data-testid="stBaseButton-pills"],
-        div.st-key-couche_{cle}
-        button[data-testid="stBaseButton-pills"] * {{
-            color: #8C8C8C !important;
-        }}
-        """
-        for cle, _, couleur in couches_carte
-    )
     # Les colonnes Streamlit occupent par défaut une fraction fixe de la
     # largeur : on les réduit à la taille de leur pastille pour un en-tête
     # compact.
@@ -1106,7 +1075,7 @@ elif page == "Comptages horaires":
         }
     """
     st.markdown(
-        f"<style>{regles_couleurs}{regles_disposition}</style>"
+        f"<style>{regles_disposition}</style>"
         '<p style="margin-bottom:0.25rem">'
         "<strong>Carte des transports</strong> "
         '<span style="font-size:0.82em;font-weight:400;color:#6B6B6B">'
@@ -1127,6 +1096,37 @@ elif page == "Comptages horaires":
                     key=f"couche_{cle}",
                     label_visibility="collapsed",
                 ))
+
+    # La couleur est déduite de l'état réel de la couche plutôt que d'un
+    # attribut de la pastille : Streamlit ne expose pas d'état exploitable
+    # en CSS pour les pastilles.
+    GRIS_MASQUE = ("rgba(140,140,140,0.55)", "rgba(140,140,140,0.12)",
+                   "#8C8C8C")
+    regles_couleurs = []
+    for cle, _, couleur in couches_carte:
+        if couches_visibles[cle]:
+            bordure, fond, texte = couleur, couleur, "#FFFFFF"
+        else:
+            bordure, fond, texte = GRIS_MASQUE
+        regles_couleurs.append(f"""
+        div.st-key-couche_{cle} button,
+        div.st-key-couche_{cle} button:hover,
+        div.st-key-couche_{cle} button:focus,
+        div.st-key-couche_{cle} button:active {{
+            border: 1.5px solid {bordure} !important;
+            background: {fond} !important;
+            box-shadow: none !important;
+            font-weight: 600 !important;
+        }}
+        div.st-key-couche_{cle} button,
+        div.st-key-couche_{cle} button * {{
+            color: {texte} !important;
+        }}
+        """)
+    st.markdown(
+        f"<style>{''.join(regles_couleurs)}</style>",
+        unsafe_allow_html=True,
+    )
 
     # ── Carte multicouche ────────────────────────────────────────────────
     fig_carte_av = carte_comptages_horaires(

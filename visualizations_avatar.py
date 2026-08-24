@@ -31,6 +31,10 @@ OPACITE_NON_SELECTIONNE = 0.85
 # OpenStreetMap sans masquer les couches de données.
 OPACITE_VOILE_FOND = 0.45
 
+# Gris clair du réseau routier : il sert de trame de fond et ne doit pas
+# concurrencer visuellement les brins rouges ni les points.
+COULEUR_RESEAU_ROUTIER = "#9AA0A6"
+
 # ---------------------------------------------------------------------------
 # Helpers réseau routier
 # ---------------------------------------------------------------------------
@@ -77,7 +81,7 @@ def _ajouter_reseau(fig: go.Figure, reseau_gdf, metrique: str = "VL_jour") -> No
         lat=lats,
         lon=lons,
         mode="lines",
-        line=dict(width=1.6, color="#4A4A4A"),
+        line=dict(width=1.6, color=COULEUR_RESEAU_ROUTIER),
         text=textes,
         hoverinfo="text",
         name="Réseau routier",
