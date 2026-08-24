@@ -27,6 +27,10 @@ from formatting import fmt_nombre
 # devenaient quasi invisibles au clic sur un brin routier.
 OPACITE_NON_SELECTIONNE = 0.85
 
+# Voile blanc translucide posé sur le fond de carte pour atténuer
+# OpenStreetMap sans masquer les couches de données.
+OPACITE_VOILE_FOND = 0.45
+
 # ---------------------------------------------------------------------------
 # Helpers réseau routier
 # ---------------------------------------------------------------------------
@@ -183,10 +187,12 @@ def carte_comptages_horaires(
     gares_gdf=None,
     mobigo_gdf=None,
     couches_visibles: dict[str, bool] | None = None,
+    cle_vue: str | None = None,
 ) -> go.Figure:
     """Carte Scattermapbox multicouche pour le module Comptages horaires.
 
     Couches (ordre d'empilement bas → haut) :
+      0. Voile translucide sur le fond de carte
       1. Contour du perimetre SERM
       2. Reseau routier (trafic VL, couleur par type de voie)
       3. Brins à profils horaires — lignes rouges cliquables
@@ -206,6 +212,9 @@ def carte_comptages_horaires(
         couches_visibles: Masque d'affichage des couches. Cles reconnues :
             ``stations``, ``axes``, ``gares``, ``mobigo``, ``reseau``.
             Toute cle absente est consideree comme visible.
+        cle_vue: Identifiant de la vue courante. Tant qu'il ne change pas,
+            Plotly conserve le zoom et le centrage choisis a la souris
+            malgre les reconstructions de la figure.
 
     Returns:
         Figure Plotly.
@@ -360,15 +369,42 @@ def carte_comptages_horaires(
     centre_lat = float(lats_s.mean()) if len(lats_s) else 47.2
     centre_lon = float(stations["longitude"].dropna().mean()) if not stations.empty else 5.4
 
+    # Le voile passe par ``mapbox.layers`` et non par une trace : avec
+    # ``below="traces"`` il reste au-dessus du fond de carte et sous
+    # toutes les couches de donnees, quel que soit leur ordre.
+    voile_fond = dict(
+        sourcetype="geojson",
+        type="fill",
+        below="traces",
+        color="#FFFFFF",
+        opacity=OPACITE_VOILE_FOND,
+        source={
+            "type": "Feature",
+            "properties": {},
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [[
+                    [-180.0, -85.0],
+                    [180.0, -85.0],
+                    [180.0, 85.0],
+                    [-180.0, 85.0],
+                    [-180.0, -85.0],
+                ]],
+            },
+        },
+    )
+
     fig.update_layout(
         mapbox=dict(
             style=style_mapbox,
             center=dict(lat=centre_lat, lon=centre_lon),
             zoom=8,
+            layers=[voile_fond],
         ),
         margin={"l": 0, "r": 0, "t": 0, "b": 0},
         height=580,
         showlegend=False,
+        uirevision=cle_vue,
     )
     return fig
 

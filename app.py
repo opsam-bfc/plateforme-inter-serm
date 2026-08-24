@@ -1060,26 +1060,33 @@ elif page == "Comptages horaires":
         ("gares", "Gares SNCF", "#1565C0"),
         ("mobigo", "Arrêts Mobigo", "#43A047"),
     )
+    # Couche affichée : pastille pleine dans la couleur de la carte.
+    # Couche masquée : pastille grisée.
     regles_couleurs = "".join(
         f"""
-        div.st-key-couche_{cle} button {{
-            border: 1.5px solid {couleur} !important;
-            background: {couleur}1F !important;
-            font-weight: 600 !important;
-        }}
-        div.st-key-couche_{cle} button,
-        div.st-key-couche_{cle} button * {{
-            color: {couleur} !important;
-        }}
         div.st-key-couche_{cle}
         button[data-testid="stBaseButton-pillsActive"] {{
+            border: 1.5px solid {couleur} !important;
             background: {couleur} !important;
+            font-weight: 600 !important;
         }}
         div.st-key-couche_{cle}
         button[data-testid="stBaseButton-pillsActive"],
         div.st-key-couche_{cle}
         button[data-testid="stBaseButton-pillsActive"] * {{
             color: #ffffff !important;
+        }}
+        div.st-key-couche_{cle}
+        button[data-testid="stBaseButton-pills"] {{
+            border: 1.5px solid rgba(140, 140, 140, 0.55) !important;
+            background: rgba(140, 140, 140, 0.12) !important;
+            font-weight: 500 !important;
+        }}
+        div.st-key-couche_{cle}
+        button[data-testid="stBaseButton-pills"],
+        div.st-key-couche_{cle}
+        button[data-testid="stBaseButton-pills"] * {{
+            color: #8C8C8C !important;
         }}
         """
         for cle, _, couleur in couches_carte
@@ -1137,11 +1144,16 @@ elif page == "Comptages horaires":
         gares_gdf=gares_av if not gares_av.empty else None,
         mobigo_gdf=mobigo_av if not mobigo_av.empty else None,
         couches_visibles=couches_visibles,
+        cle_vue=f"serm-{code_serm_av}",
     )
+    # selection_mode="points" : sans cela les modes rectangle et lasso
+    # accaparent la souris et empechent le zoom et le deplacement.
     ev = st.plotly_chart(
         fig_carte_av,
         use_container_width=True,
         on_select="rerun",
+        selection_mode="points",
+        config={"scrollZoom": True, "doubleClick": "reset"},
         key="carte_avatar",
     )
 
