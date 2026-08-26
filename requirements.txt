@@ -4,7 +4,10 @@ geopandas>=1.0
 # pyyaml : lecture du fichier de configuration du territoire (config/territoire.yaml)
 pyyaml>=6.0
 shapely>=2.0
-plotly>=6.0
+# Plotly 7.0 supprime les traces mapbox (scattermapbox, choroplethmapbox)
+# et le sous-graphe mapbox, utilises par toutes les cartes de la plateforme.
+# Migration vers les traces MapLibre (*map) requise avant de lever la borne.
+plotly>=6.0,<7.0
 reportlab>=4.0
 # Kaleido 0.2.x embarque le moteur Chrome -> indispensable pour fig.to_image()
 # (export PDF des graphiques Plotly sans Chrome, compatible Streamlit Cloud).
