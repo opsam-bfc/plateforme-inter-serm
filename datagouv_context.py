@@ -24,6 +24,8 @@ import plotly.graph_objects as go
 import requests
 import streamlit as st
 
+from plotly_maps_compat import layout_carte, scatter_map
+
 LOG = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -280,7 +282,7 @@ def _contour_serm(fig: go.Figure, perimetres_gdf: gpd.GeoDataFrame,
         )
         for poly in geoms:
             xs, ys = poly.exterior.coords.xy
-            fig.add_trace(go.Scattermapbox(
+            fig.add_trace(scatter_map(
                 lat=list(ys), lon=list(xs), mode="lines",
                 line=dict(width=2, color=couleur),
                 hoverinfo="skip", showlegend=False,
@@ -944,18 +946,27 @@ def afficher_panneau_contexte(perimetres_gdf: gpd.GeoDataFrame) -> None:
                 ) == code]
                 if sub.empty:
                     continue
-                fig_g.add_trace(go.Scattermapbox(
+                fig_g.add_trace(scatter_map(
                     lat=sub.geometry.y, lon=sub.geometry.x, mode="markers",
                     marker=dict(size=10, color=_info_serm(code)["couleur"]),
                     hovertext=sub.get("libelle", sub.index.astype(str)),
                     name=_info_serm(code)["nom_court"],
                 ))
             fig_g.update_layout(
-                mapbox_style="open-street-map",
-                mapbox_center=centre_carte, mapbox_zoom=7.0,
-                margin={"r": 5, "t": 5, "l": 5, "b": 5}, height=500,
-                legend=dict(orientation="h", yanchor="bottom",
-                            y=1.02, xanchor="right", x=1),
+                **layout_carte(
+                    "open-street-map",
+                    center=centre_carte,
+                    zoom=7.0,
+                    margin={"r": 5, "t": 5, "l": 5, "b": 5},
+                    height=500,
+                    legend=dict(
+                        orientation="h",
+                        yanchor="bottom",
+                        y=1.02,
+                        xanchor="right",
+                        x=1,
+                    ),
+                ),
             )
             st.plotly_chart(fig_g, use_container_width=True)
 

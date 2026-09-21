@@ -27,6 +27,7 @@ from data_loader import (
     info_serm,
 )
 from formatting import fmt_nombre
+from plotly_maps_compat import layout_carte, scatter_map
 
 # ---------------------------------------------------------------------------
 # Palette / utilitaires
@@ -131,19 +132,21 @@ def _layout_mapbox(
     style_mapbox: str, hauteur: int = 600, marge: int = 5
 ) -> dict:
     return _theme_layout(
-        mapbox_style=style_mapbox,
-        margin={"r": marge, "t": marge, "l": marge, "b": marge},
-        height=hauteur,
-        showlegend=True,
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=1.02,
-            xanchor="right",
-            x=1,
-            bgcolor="rgba(255,255,255,0.92)",
-            bordercolor="#D5DCE5",
-            borderwidth=1,
+        **layout_carte(
+            style_mapbox,
+            margin={"r": marge, "t": marge, "l": marge, "b": marge},
+            height=hauteur,
+            showlegend=True,
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=1.02,
+                xanchor="right",
+                x=1,
+                bgcolor="rgba(255,255,255,0.92)",
+                bordercolor="#D5DCE5",
+                borderwidth=1,
+            ),
         ),
     )
 
@@ -172,7 +175,7 @@ def carte_vue_ensemble(
     )
     geojson = json.loads(gdf.to_json())
 
-    fig = px.choropleth_mapbox(
+    fig = px.choropleth_map(
         gdf,
         geojson=geojson,
         locations=gdf.index,
@@ -182,6 +185,7 @@ def carte_vue_ensemble(
         opacity=0.55,
         center={"lat": 47.2, "lon": 5.0},
         zoom=6.2,
+        map_style=style_mapbox,
     )
     fig.update_traces(
         marker_line_width=2,
@@ -238,7 +242,7 @@ def _coords_lignes(
     """Construit les listes lat/lon/texte pour un GeoDataFrame de linestrings.
 
     Utilise le separateur ``None`` entre troncons pour un rendu efficace
-    en une seule trace Scattermapbox.
+    en une seule trace Scattermap.
 
     Parameters
     ----------
@@ -347,7 +351,7 @@ def carte_trafic_serm(
             for poly in geoms:
                 xs, ys = poly.exterior.coords.xy
                 fig.add_trace(
-                    go.Scattermapbox(
+                    scatter_map(
                         lat=list(ys),
                         lon=list(xs),
                         mode="lines",
@@ -364,7 +368,7 @@ def carte_trafic_serm(
             reseau_sans, metrique, col_valeur
         )
         fig.add_trace(
-            go.Scattermapbox(
+            scatter_map(
                 lat=lats,
                 lon=lons,
                 mode="lines",
@@ -403,7 +407,7 @@ def carte_trafic_serm(
             else:
                 nom_classe = f"{fmt_nombre(seuil_bas, 0)} – {fmt_nombre(seuil_haut, 0)}"
             fig.add_trace(
-                go.Scattermapbox(
+                scatter_map(
                     lat=lats,
                     lon=lons,
                     mode="lines",
@@ -418,13 +422,15 @@ def carte_trafic_serm(
     libelle = METRIQUE_LABELS.get(metrique, metrique)
     fig.update_layout(
         **_theme_layout(
-            mapbox_style=style_mapbox,
-            mapbox_center=centre,
-            mapbox_zoom=8.5,
-            margin={"r": 5, "t": 40, "l": 5, "b": 5},
-            height=620,
-            title=titre or libelle,
-            legend_title_text=libelle,
+            **layout_carte(
+                style_mapbox,
+                center=centre,
+                zoom=8.5,
+                margin={"r": 5, "t": 40, "l": 5, "b": 5},
+                height=620,
+                title=titre or libelle,
+                legend_title_text=libelle,
+            ),
         )
     )
     return fig

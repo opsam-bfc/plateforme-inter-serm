@@ -3,7 +3,7 @@
 Visualisations Plotly pour le module "Comptages horaires" de la plateforme
 inter-SERM.
 
-Carte multicouche (Scattermapbox) :
+Carte multicouche (Scattermap) :
   - Reseau routier (trafic VL)   : lignes colorees par volume
   - Arrets Mobigo                : points verts
   - Gares SNCF                   : points bleus
@@ -21,6 +21,7 @@ import pandas as pd
 import plotly.graph_objects as go
 
 from formatting import fmt_nombre
+from plotly_maps_compat import layout_carte_noeud, scatter_map
 
 # Plotly atténue par défaut les points non sélectionnés à 0.2 d'opacité dès
 # qu'une sélection existe sur la figure : les gares, arrêts et stations
@@ -77,7 +78,7 @@ def _ajouter_reseau(fig: go.Figure, reseau_gdf, metrique: str = "VL_jour") -> No
 
     reseau[metrique] = reseau[metrique].fillna(0)
     lats, lons, textes = _coords_lignes_reseau(reseau)
-    fig.add_trace(go.Scattermapbox(
+    fig.add_trace(scatter_map(
         lat=lats,
         lon=lons,
         mode="lines",
@@ -116,7 +117,7 @@ def _ajouter_brins_profils(
         ]
         if not selection.empty:
             lats_sel, lons_sel, _ = _coords_lignes_reseau(selection)
-            fig.add_trace(go.Scattermapbox(
+            fig.add_trace(scatter_map(
                 lat=lats_sel,
                 lon=lons_sel,
                 mode="lines",
@@ -159,12 +160,12 @@ def _ajouter_brins_profils(
             textes.append(None)
             donnees.append(["", "", ""])
 
-    fig.add_trace(go.Scattermapbox(
+    fig.add_trace(scatter_map(
         lat=lats,
         lon=lons,
         mode="lines+markers",
         line=dict(width=5, color="#D32F2F"),
-        marker=go.scattermapbox.Marker(size=7, color="#D32F2F", opacity=0.9),
+        marker=dict(size=7, color="#D32F2F", opacity=0.9),
         unselected=dict(marker=dict(opacity=OPACITE_NON_SELECTIONNE)),
         text=textes,
         hoverinfo="text",
@@ -193,7 +194,7 @@ def carte_comptages_horaires(
     couches_visibles: dict[str, bool] | None = None,
     cle_vue: str | None = None,
 ) -> go.Figure:
-    """Carte Scattermapbox multicouche pour le module Comptages horaires.
+    """Carte Scattermap multicouche pour le module Comptages horaires.
 
     Couches (ordre d'empilement bas → haut) :
       0. Voile translucide sur le fond de carte
@@ -252,7 +253,7 @@ def carte_comptages_horaires(
                 lons_p.extend(list(xs))
                 lats_p.append(None)
                 lons_p.append(None)
-        fig.add_trace(go.Scattermapbox(
+        fig.add_trace(scatter_map(
             lat=lats_p, lon=lons_p, mode="lines",
             line=dict(width=2.5, color="#142850"),
             fill="toself",
@@ -281,10 +282,10 @@ def carte_comptages_horaires(
         lons_m = mob.geometry.x.tolist()
         noms_m = mob.get("stop_name", pd.Series([""] * len(mob))).tolist()
         hover_m = [f"<b>{n}</b><br>Arret Mobigo" for n in noms_m]
-        fig.add_trace(go.Scattermapbox(
+        fig.add_trace(scatter_map(
             lat=lats_m, lon=lons_m,
             mode="markers",
-            marker=go.scattermapbox.Marker(size=12, color="#43A047", opacity=0.8),
+            marker=dict(size=12, color="#43A047", opacity=0.8),
             unselected=dict(marker=dict(opacity=OPACITE_NON_SELECTIONNE)),
             text=hover_m,
             hoverinfo="text",
@@ -315,10 +316,10 @@ def carte_comptages_horaires(
         lons_g = centroides_g.x.tolist()
         noms_g = gares[col_nom].tolist()
         hover_g = [f"<b>{n}</b><br>Gare SNCF" for n in noms_g]
-        fig.add_trace(go.Scattermapbox(
+        fig.add_trace(scatter_map(
             lat=lats_g, lon=lons_g,
             mode="markers",
-            marker=go.scattermapbox.Marker(
+            marker=dict(
                 size=14, color="#1565C0", opacity=0.95,
             ),
             unselected=dict(marker=dict(opacity=OPACITE_NON_SELECTIONNE)),
@@ -352,11 +353,11 @@ def carte_comptages_horaires(
             )
             custom.append(["station", cp_id, nom, route])
 
-        fig.add_trace(go.Scattermapbox(
+        fig.add_trace(scatter_map(
             lat=stations["latitude"].tolist(),
             lon=stations["longitude"].tolist(),
             mode="markers",
-            marker=go.scattermapbox.Marker(
+            marker=dict(
                 size=tailles, color="#F57C00", opacity=0.95,
             ),
             unselected=dict(marker=dict(opacity=OPACITE_NON_SELECTIONNE)),
@@ -373,7 +374,7 @@ def carte_comptages_horaires(
     centre_lat = float(lats_s.mean()) if len(lats_s) else 47.2
     centre_lon = float(stations["longitude"].dropna().mean()) if not stations.empty else 5.4
 
-    # Le voile passe par ``mapbox.layers`` et non par une trace : avec
+    # Le voile passe par ``map.layers`` et non par une trace : avec
     # ``below="traces"`` il reste au-dessus du fond de carte et sous
     # toutes les couches de donnees, quel que soit leur ordre.
     voile_fond = dict(
@@ -399,8 +400,8 @@ def carte_comptages_horaires(
     )
 
     fig.update_layout(
-        mapbox=dict(
-            style=style_mapbox,
+        **layout_carte_noeud(
+            style_mapbox,
             center=dict(lat=centre_lat, lon=centre_lon),
             zoom=8,
             layers=[voile_fond],
