@@ -30,6 +30,55 @@ except ImportError:
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+
+def choisir_dossier_pc(titre: str = "Choisir le dossier d'export") -> str | None:
+    """Ouvre la fenêtre native de choix de dossier sur le PC qui exécute l'app.
+
+    Renvoie le chemin choisi, une chaîne vide si l'utilisateur annule,
+    ou lève ``RuntimeError`` si aucun écran n'est disponible
+    (Streamlit Cloud, session distante).
+    """
+    try:
+        import tkinter as tk
+        from tkinter import filedialog
+    except Exception as exc:
+        raise RuntimeError(
+            "Sélecteur de dossier indisponible sur cette machine."
+        ) from exc
+
+    try:
+        fenetre = tk.Tk()
+        fenetre.withdraw()
+        try:
+            fenetre.attributes("-topmost", True)
+        except Exception:
+            pass
+        dossier = filedialog.askdirectory(title=titre, mustexist=False)
+        fenetre.destroy()
+    except Exception as exc:
+        raise RuntimeError(
+            "Impossible d'ouvrir la fenêtre de sélection. "
+            "Lancez la plateforme en local sur votre PC, "
+            "ou saisissez le chemin du dossier."
+        ) from exc
+    return (dossier or "").strip()
+
+
+def _memoriser_dossier_export() -> None:
+    """Callback du bouton : ouvre le sélecteur avant le rendu des widgets."""
+    try:
+        choisi = choisir_dossier_pc(
+            "Dossier d'export des livrables SERM"
+        )
+    except RuntimeError as exc:
+        st.session_state["dossier_export_message"] = str(exc)
+        return
+    if choisi:
+        st.session_state["dossier_export_livrables"] = choisi
+        st.session_state["dossier_export_message"] = ""
+    else:
+        st.session_state["dossier_export_message"] = "Sélection annulée."
+
 from auth import deconnecter, verifier_authentification  # noqa: E402
 from config.territoire_loader import cfg, codes_zones, scenarios  # noqa: E402
 
@@ -1341,13 +1390,33 @@ elif page == "Réglages":
     st.divider()
     st.subheader("Export des livrables par SERM")
     st.caption(
-        "Génère un dossier structuré (CSV, GeoJSON, GPKG) avec une note "
-        "explicative par fichier, en dehors de la plateforme. "
-        "Commande : `python scripts/export_livrables_par_serm.py --zip`"
+        "Génère un dossier structuré (CSV, GeoJSON, shapefile) et, "
+        "si demandé, une archive ZIP à côté de ce dossier. "
+        "Le bouton ouvre la fenêtre de votre PC lorsque la plateforme "
+        "tourne en local. Sur un serveur distant, saisissez le chemin."
+    )
+    st.session_state.setdefault("dossier_export_livrables", "")
+    st.session_state.setdefault("dossier_export_message", "")
+    if st.button(
+        ":material/folder_open: Choisir le dossier sur ce PC",
+        on_click=_memoriser_dossier_export,
+    ):
+        pass
+    message_dossier = st.session_state.get("dossier_export_message") or ""
+    if message_dossier:
+        st.warning(message_dossier)
+    dossier_export = st.text_input(
+        "Dossier d'export",
+        key="dossier_export_livrables",
+        placeholder=r"Exemple : C:\Users\moi\Documents\Exports\SERM",
+        help=(
+            "Laisser vide pour le dossier par défaut du script "
+            "(EXPORT_LIVRABLES ou 4_OUTPUT sur le NAS)."
+        ),
     )
     col_exp1, col_exp2 = st.columns(2)
     with col_exp1:
-        faire_zip = st.checkbox("Créer une archive ZIP", value=False)
+        faire_zip = st.checkbox("Créer une archive ZIP", value=True)
     with col_exp2:
         effacer_export = st.checkbox(
             "Réinitialiser le dossier d'export", value=False,
@@ -1357,8 +1426,12 @@ elif page == "Réglages":
         cmd = [
             sys.executable,
             str(racine / "scripts" / "export_livrables_par_serm.py"),
+            "--data-dir", str(data_dir()),
             "-v",
         ]
+        dossier_cible = (dossier_export or "").strip()
+        if dossier_cible:
+            cmd.extend(["--out-dir", dossier_cible])
         if faire_zip:
             cmd.append("--zip")
         if effacer_export:
@@ -1371,7 +1444,17 @@ elif page == "Réglages":
                 )
                 st.code(result.stdout + "\n" + result.stderr, language="text")
                 if result.returncode == 0:
-                    st.success("Export terminé. Voir le chemin dans les logs.")
+                    if dossier_cible:
+                        cible = Path(dossier_cible)
+                        st.success(f"Export terminé dans `{cible}`.")
+                        if faire_zip:
+                            archive = cible.parent / f"{cible.name}.zip"
+                            if archive.is_file():
+                                st.success(f"Archive ZIP : `{archive}`")
+                    else:
+                        st.success(
+                            "Export terminé. Le chemin figure dans les logs."
+                        )
                 else:
                     st.error(f"Échec export (code {result.returncode}).")
             except Exception as exc:
