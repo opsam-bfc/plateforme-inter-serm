@@ -61,16 +61,29 @@ plateforme_analyse_inter_SERM/
     |   |-- synthese_serm_vl_pl.csv
     |   |-- reseau_serm/{dijon,nfc,besancon}.parquet
     |   `-- ...
-    `-- sc2033/                  # Bundle sc2033 (a generer depuis le NAS)
+    |-- sc2033/                  # Bundle sc2033 (a generer depuis le NAS)
+    `-- sc2050/                  # Bundle sc2050 (projection OPSAM)
 ```
 
-## Generer le bundle sc2033
+## Generer un bundle scenario (sc2033, sc2050, …)
 
-Sur une machine avec acces NAS OPSAM :
+Sur une machine avec acces reseau OPSAM v3 (`\\poste-2-170\OPSAM_v3`) et NAS lookup :
 
 ```bash
-python scripts/rebuild_for_new_perimeter.py --scenario sc2033 --data-dir data/sc2033 -v
-python scripts/optimize_for_deployment.py --data-dir data/sc2033
+python scripts/rebuild_for_new_perimeter.py --scenario sc2050 --data-dir data/sc2050 -v
+python scripts/optimize_for_deployment.py --data-dir data/sc2050
+```
+
+Le libelle affiche dans Streamlit est defini dans `config/territoire.yaml`
+(ex. `2050 (projection)` pour `id: sc2050`).
+
+Publication GitHub (branche `dev`, comme sc2033) :
+
+```powershell
+git checkout dev
+git add config/territoire.yaml data/sc2050
+git commit -m "feat: bundle scenario sc2050 (2050 projection)"
+git push origin dev
 ```
 
 ## Installation locale

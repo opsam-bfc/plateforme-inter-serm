@@ -127,6 +127,11 @@ _SOURCE_MACROZONE_FALLBACK = {
 # Helpers chemins
 # ---------------------------------------------------------------------------
 
+def _scenario_opsam() -> str:
+    """Identifiant scénario (env ``SERM_SCENARIO``, défaut Ref2024)."""
+    return (os.environ.get("SERM_SCENARIO") or "Ref2024").strip()
+
+
 def _reseau_shp() -> Path:
     """Retourne le shapefile reseau a utiliser.
 
@@ -153,11 +158,12 @@ def _reseau_shp() -> Path:
     candidat = Path(_RESEAU_SERM_DEFAUT)
     if candidat.is_file():
         return candidat
+    scenario = _scenario_opsam()
     base_dir = (
         os.environ.get("SERM_OPSAM_BASE_DIR")
-        or r"\\poste-2-170\OPSAM_v3\OPSAM\Base\Ref2024"
+        or rf"\\poste-2-170\OPSAM_v3\OPSAM\Base\{scenario}"
     )
-    return Path(base_dir) / "reseau_detaille_linkshape_Ref2024.shp"
+    return Path(base_dir) / f"reseau_detaille_linkshape_{scenario}.shp"
 
 
 def _link_evolue_csv() -> Path:
@@ -165,8 +171,12 @@ def _link_evolue_csv() -> Path:
     v = os.environ.get("SERM_LINK_EVOLUE_CSV")
     if v:
         return Path(v)
-    base_dir = os.environ.get("SERM_OPSAM_BASE_DIR") or r"\\poste-2-170\OPSAM_v3\OPSAM\Base\Ref2024"
-    return Path(base_dir) / "Link_evolue_Ref2024.csv"
+    scenario = _scenario_opsam()
+    base_dir = (
+        os.environ.get("SERM_OPSAM_BASE_DIR")
+        or rf"\\poste-2-170\OPSAM_v3\OPSAM\Base\{scenario}"
+    )
+    return Path(base_dir) / f"Link_evolue_{scenario}.csv"
 
 
 def _data_dir() -> Path:

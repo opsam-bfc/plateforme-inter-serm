@@ -51,8 +51,12 @@ def _matrice_vl_csv() -> Path:
     v = os.environ.get("SERM_MATRICE_VL_CSV")
     if v:
         return Path(v)
-    opsam = os.environ.get("SERM_OPSAM_DIR") or r"\\poste-2-170\OPSAM_v3\OPSAM\Outputs\Ref2024"
-    return Path(opsam) / "matrice_vl_Ref2024.csv"
+    scenario = (os.environ.get("SERM_SCENARIO") or "Ref2024").strip()
+    opsam = (
+        os.environ.get("SERM_OPSAM_DIR")
+        or rf"\\poste-2-170\OPSAM_v3\OPSAM\Outputs\{scenario}"
+    )
+    return Path(opsam) / f"matrice_vl_{scenario}.csv"
 
 
 def _lookup_csv() -> Path:

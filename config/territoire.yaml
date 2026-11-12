@@ -44,6 +44,13 @@ scenarios:
     # script bascule sur Base/sc2033/reseau_detaille_linkshape_sc2033.shp.
     reseau_shp: ''
 
+  - id: sc2050
+    libelle: "2050 (projection)"
+    opsam_outputs: '\\poste-2-170\OPSAM_v3\OPSAM\Outputs\sc2050'
+    opsam_base: '\\poste-2-170\OPSAM_v3\OPSAM\Base\sc2050'
+    matrice_vl_csv: 'matrice_vl_sc2050.csv'
+    reseau_shp: ''
+
 # ── Région / territoire global ────────────────────────────────────────────────
 region:
   nom: "Bourgogne-Franche-Comté"
