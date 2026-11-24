@@ -660,8 +660,8 @@ elif page == "Socle par SERM":
     st.subheader("Carte de trafic sur le réseau du SERM")
     st.caption(
         "Les couches Interne / Échange / Transit sont recalées sur le TMJA "
-        "consolidé (`TMJA_P`) via le ratio `VOL_Mn_X / VOLUME` issu de "
-        "l'affectation OPSAM (M1 pour Dijon et NFC, M2 pour Besançon)."
+        "consolidé (`TMJA_P`). Si `VOL_M2_E` est vide, le ratio vient de "
+        "`VOL_M1_*`. Les deux sens d'un même lien sont sommés."
     )
     # Indicateurs disponibles selon les colonnes presentes dans le bundle.
     indicateurs_base = ["VL_jour", "TMJA_P"]

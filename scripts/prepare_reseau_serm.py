@@ -351,6 +351,25 @@ def calculer_volumes_derives(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
     return gdf
 
 
+def _volumes_iet(
+    gdf: gpd.GeoDataFrame, prefix: str
+) -> pd.DataFrame | None:
+    """Volumes I/E/T d'un referentiel, ou None si une colonne manque."""
+    colonnes = [f"VOL_{prefix}_{flux}" for flux in FLUX_IET]
+    if any(col not in gdf.columns for col in colonnes):
+        return None
+    vols = pd.DataFrame(
+        {
+            flux: pd.to_numeric(
+                gdf[f"VOL_{prefix}_{flux}"], errors="coerce"
+            ).fillna(0).clip(lower=0).astype("float64")
+            for flux in FLUX_IET
+        },
+        index=gdf.index,
+    )
+    return vols
+
+
 def calculer_flux_iet_recales(
     gdf: gpd.GeoDataFrame,
     source_macrozone: str,
@@ -361,6 +380,10 @@ def calculer_flux_iet_recales(
 
         TMJA_X = TMJA_P * VOL_{Mn}_X / VOLUME
         PART_X = VOL_{Mn}_X / VOLUME
+
+    L'export OPSAM laisse ``VOL_M2_E`` a 0 et range tout le volume
+    dans ``VOL_M2_I``. Sur ces lignes, le ratio bascule sur ``VOL_M1_*``,
+    qui decompose bien le volume en interne / echange / transit.
 
     Parameters
     ----------
@@ -377,8 +400,6 @@ def calculer_flux_iet_recales(
         )
         prefix = "M1"
 
-    gdf["source_macrozone"] = prefix
-
     if "TMJA_P" not in gdf.columns or "VOLUME" not in gdf.columns:
         LOG.warning(
             "TMJA_P ou VOLUME absents — TMJA_I/E/T et PART_I/E/T a 0"
@@ -386,6 +407,7 @@ def calculer_flux_iet_recales(
         for flux in FLUX_IET:
             gdf[f"TMJA_{flux}"] = 0.0
             gdf[f"PART_{flux}"] = 0.0
+        gdf["source_macrozone"] = prefix
         return gdf
 
     tmja = pd.to_numeric(gdf["TMJA_P"], errors="coerce").fillna(0).clip(
@@ -394,27 +416,159 @@ def calculer_flux_iet_recales(
     volume = pd.to_numeric(gdf["VOLUME"], errors="coerce").fillna(0).clip(
         lower=0
     )
-
-    for flux in FLUX_IET:
-        col_vol = f"VOL_{prefix}_{flux}"
-        if col_vol not in gdf.columns:
-            LOG.warning("Colonne absente %s — TMJA_%s / PART_%s a 0",
-                        col_vol, flux, flux)
+    preferes = _volumes_iet(gdf, prefix)
+    autre_prefix = "M1" if prefix == "M2" else "M2"
+    autres = _volumes_iet(gdf, autre_prefix)
+    if preferes is None:
+        LOG.warning(
+            "Colonnes VOL_%s_I/E/T absentes — TMJA I/E/T a 0", prefix
+        )
+        for flux in FLUX_IET:
             gdf[f"TMJA_{flux}"] = 0.0
             gdf[f"PART_{flux}"] = 0.0
-            continue
-        vol = pd.to_numeric(gdf[col_vol], errors="coerce").fillna(0).clip(
-            lower=0
+        gdf["source_macrozone"] = prefix
+        return gdf
+
+    utilise_autre = pd.Series(False, index=gdf.index)
+    if autres is not None:
+        echange_absent = preferes["E"] + preferes["T"] == 0
+        autre_decompose = autres["E"] + autres["T"] > 0
+        utilise_autre = echange_absent & autre_decompose
+
+    choix = preferes.copy()
+    if bool(utilise_autre.any()):
+        choix.loc[utilise_autre] = autres.loc[utilise_autre]
+        LOG.info(
+            "Ratio I/E/T : %d troncons bascules de %s vers %s "
+            "(echange/transit vides)",
+            int(utilise_autre.sum()),
+            prefix,
+            autre_prefix,
         )
+    source = pd.Series(prefix, index=gdf.index, dtype="object")
+    source.loc[utilise_autre] = autre_prefix
+    gdf["source_macrozone"] = source
+
+    masque = volume > 0
+    for flux in FLUX_IET:
         ratio = pd.Series(0.0, index=gdf.index, dtype="float64")
-        masque = volume > 0
-        ratio.loc[masque] = (vol.loc[masque] / volume.loc[masque]).clip(
-            lower=0
-        )
+        ratio.loc[masque] = (
+            choix.loc[masque, flux] / volume.loc[masque]
+        ).clip(lower=0)
         gdf[f"TMJA_{flux}"] = (tmja * ratio).clip(lower=0)
         gdf[f"PART_{flux}"] = ratio
 
     return gdf
+
+
+# Metriques de trafic additionnees quand les deux sens existent.
+_COLONNES_SENS = (
+    "TMJA_P",
+    "PL_P",
+    "PL_jour",
+    "VL_jour",
+    "TMJA_I",
+    "TMJA_E",
+    "TMJA_T",
+    "VOLUME",
+)
+
+
+def agreger_sens_contraire(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+    """Une ligne par lien non oriente : les deux sens sont sommes.
+
+    Les morceaux issus d'un clip gardent le TMJA du lien (max), ils
+    ne sont pas additionnes entre eux. Seul le sens oppose l'est.
+    """
+    if gdf.empty or not {"A", "B"}.issubset(gdf.columns):
+        return gdf
+
+    from shapely.ops import unary_union
+
+    df = gdf.copy()
+    df["_A"] = pd.to_numeric(df["A"], errors="coerce")
+    df["_B"] = pd.to_numeric(df["B"], errors="coerce")
+    sans_noeuds = df[df["_A"].isna() | df["_B"].isna()].drop(
+        columns=["_A", "_B"]
+    )
+    df = df.dropna(subset=["_A", "_B"]).copy()
+    if df.empty:
+        return gdf
+
+    df["_u"] = df[["_A", "_B"]].min(axis=1)
+    df["_v"] = df[["_A", "_B"]].max(axis=1)
+    colonnes = [c for c in _COLONNES_SENS if c in df.columns]
+    par_sens = (
+        df.groupby(["_u", "_v", "_A", "_B"], dropna=False)[colonnes]
+        .max()
+        .reset_index()
+    )
+    sommes = par_sens.groupby(["_u", "_v"], as_index=False)[colonnes].sum()
+
+    def _geom(groupe: pd.DataFrame):
+        if "TMJA_P" in groupe.columns and len(groupe) > 1:
+            score = groupe.groupby(["_A", "_B"])["TMJA_P"].max()
+            noeud_a, noeud_b = score.idxmax()
+            groupe = groupe[
+                (groupe["_A"] == noeud_a) & (groupe["_B"] == noeud_b)
+            ]
+        return unary_union(list(groupe.geometry))
+
+    geoms = df.groupby(["_u", "_v"], sort=False).apply(
+        _geom, include_groups=False
+    )
+    geoms.name = "geometry"
+    portees = [
+        c for c in (
+            "CL_ADMIN", "NUMERO", "NB_VOIES",
+            "slug_serm", "nom_serm", "source_macrozone",
+        )
+        if c in df.columns
+    ]
+    if portees:
+        attributs = (
+            df.groupby(["_u", "_v"], sort=False)[portees]
+            .first()
+            .reset_index()
+        )
+    else:
+        attributs = sommes[["_u", "_v"]].copy()
+    out = sommes.merge(attributs, on=["_u", "_v"], how="left")
+    out = out.merge(
+        geoms.reset_index(), on=["_u", "_v"], how="left"
+    )
+    out["A"] = out["_u"]
+    out["B"] = out["_v"]
+    if "TMJA_P" in out.columns:
+        tmja = pd.to_numeric(out["TMJA_P"], errors="coerce").fillna(0)
+        for flux in FLUX_IET:
+            col = f"TMJA_{flux}"
+            if col not in out.columns:
+                continue
+            part = pd.Series(0.0, index=out.index, dtype="float64")
+            masque = tmja > 0
+            part.loc[masque] = (
+                pd.to_numeric(out.loc[masque, col], errors="coerce")
+                .fillna(0)
+                / tmja.loc[masque]
+            )
+            out[f"PART_{flux}"] = part
+    out = out.drop(columns=["_u", "_v"])
+    resultat = gpd.GeoDataFrame(out, geometry="geometry", crs=gdf.crs)
+    if (
+        "DISTANCE_clip_km" in gdf.columns
+        and resultat.crs is not None
+        and resultat.crs.is_projected
+    ):
+        resultat["DISTANCE_clip_km"] = resultat.geometry.length / 1000.0
+    if not sans_noeuds.empty:
+        resultat = pd.concat(
+            [resultat, sans_noeuds], ignore_index=True
+        )
+        resultat = gpd.GeoDataFrame(
+            resultat, geometry="geometry", crs=gdf.crs
+        )
+    return resultat
 
 
 def decouper_par_serm(
@@ -467,6 +621,7 @@ def decouper_par_serm(
         clipes["DISTANCE_clip_km"] = clipes.geometry.length / 1000.0
         clipes = calculer_volumes_derives(clipes)
         clipes = calculer_flux_iet_recales(clipes, source_mz)
+        clipes = agreger_sens_contraire(clipes)
         clipes["slug_serm"] = slug
         clipes["nom_serm"] = nom
 
