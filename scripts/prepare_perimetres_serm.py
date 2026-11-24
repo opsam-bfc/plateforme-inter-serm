@@ -144,40 +144,59 @@ def _avertir_si_m2_degenere(df: pd.DataFrame) -> None:
 # Construction du code SERM par zone
 # ---------------------------------------------------------------------------
 
+def _correspondances_serm(gdf: gpd.GeoDataFrame) -> list[gpd.GeoDataFrame]:
+    """Une copie de zone par SERM dont le couple M1/M2 correspond.
+
+    M1 et M2 sont independants. Une zone M1=1 et M2=3 (CC Jura Nord,
+    CC Val de Gray, CA du Grand Dole) reste dans les deux perimetres.
+    Le premier SERM du referentiel ne masque pas les suivants.
+    """
+    blocs: list[gpd.GeoDataFrame] = []
+    deja = pd.Series(False, index=gdf.index)
+    for entree in SERM_REFERENTIEL:
+        col = entree["source_macrozonage"]
+        if col not in gdf.columns:
+            continue
+        valeurs = pd.to_numeric(gdf[col], errors="coerce")
+        masque = valeurs == entree["code_macrozone"]
+        if not bool(masque.any()):
+            continue
+        part = gdf.loc[masque].copy()
+        part["code_serm"] = entree["code_serm"]
+        part["nom_serm"] = entree["nom_serm"]
+        part["slug_serm"] = entree["slug_serm"]
+        blocs.append(part)
+        deja = deja | masque
+    hors = gdf.loc[~deja].copy()
+    if not hors.empty:
+        hors["code_serm"] = 0
+        hors["nom_serm"] = "Hors SERM"
+        hors["slug_serm"] = "hors_serm"
+        blocs.append(hors)
+    return blocs
+
+
 def assigner_code_serm(
     gdf: gpd.GeoDataFrame, lookup: pd.DataFrame
 ) -> gpd.GeoDataFrame:
-    """Joint le lookup au zonage et assigne ``code_serm`` selon le referentiel.
+    """Joint le lookup au zonage et assigne ``code_serm``.
 
-    Une zone est attribuee a un SERM si elle correspond a son couple
-    (source_macrozonage, code_macrozone). M1 et M2 etant independants
-    par construction (cf. note OPSAM), une zone est dans au plus un SERM.
+    Une zone est recopiee une fois par SERM correspondant. M1 et M2
+    etant independants, elle peut appartenir a plusieurs perimetres.
     """
+    colonnes = [c for c in ("ID_ZONAGE", "M1", "M2") if c in lookup.columns]
     gdf = gdf.merge(
-        lookup[["ID_ZONAGE", "M1", "M2"]],
+        lookup[colonnes],
         on="ID_ZONAGE",
         how="left",
         suffixes=("", "_lookup"),
     )
-
-    def _resoudre(row) -> dict:
-        for entree in SERM_REFERENTIEL:
-            col = entree["source_macrozonage"]
-            val = row.get(col)
-            if pd.notna(val) and int(val) == entree["code_macrozone"]:
-                return {
-                    "code_serm": entree["code_serm"],
-                    "nom_serm": entree["nom_serm"],
-                    "slug_serm": entree["slug_serm"],
-                }
-        return {"code_serm": 0, "nom_serm": "Hors SERM", "slug_serm": "hors_serm"}
-
-    attribs = gdf.apply(_resoudre, axis=1, result_type="expand")
-    return gpd.GeoDataFrame(
-        pd.concat([gdf.drop(columns=attribs.columns, errors="ignore"), attribs], axis=1),
-        geometry=gdf.geometry,
-        crs=gdf.crs,
-    )
+    blocs = _correspondances_serm(gdf)
+    if not blocs:
+        vide = gdf.iloc[0:0].copy()
+        return gpd.GeoDataFrame(vide, geometry="geometry", crs=gdf.crs)
+    out = pd.concat(blocs, ignore_index=True)
+    return gpd.GeoDataFrame(out, geometry="geometry", crs=gdf.crs)
 
 
 # ---------------------------------------------------------------------------

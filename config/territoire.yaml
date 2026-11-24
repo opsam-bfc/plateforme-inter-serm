@@ -49,7 +49,8 @@ scenarios:
     opsam_outputs: '\\poste-2-170\OPSAM_v3\OPSAM\Outputs\sc2050'
     opsam_base: '\\poste-2-170\OPSAM_v3\OPSAM\Base\sc2050'
     matrice_vl_csv: 'matrice_vl_sc2050.csv'
-    reseau_shp: ''
+    # Linkshape : TMJA_P present. reseau_final_sc2050.shp ne l'a pas.
+    reseau_shp: '\\poste-2-170\OPSAM_v3\OPSAM\Base\sc2050\reseau_detaille_linkshape_sc2050.shp'
 
 # ── Région / territoire global ────────────────────────────────────────────────
 region:
